@@ -1,7 +1,7 @@
 import os
 import sqlite3
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 import urllib.parse
 import socket
 
@@ -38,7 +38,17 @@ class DbConnection:
             return self.conn.execute(sql, params)
         sql = self._adapt_sql(sql)
         cursor = self.conn.cursor()
-        cursor.execute(sql, params)
+        try:
+            cursor.execute(sql, params)
+        except Exception:
+            # `conn` is one shared, module-level connection for the whole
+            # app process (not per-request) — psycopg2 puts a connection
+            # into an "aborted transaction" state after any failed query,
+            # where every subsequent command fails too, until a rollback.
+            # Roll back here so one bad query can't take down every other
+            # page/user for the rest of the process's life.
+            self.conn.rollback()
+            raise
         return cursor
 
     def commit(self):

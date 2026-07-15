@@ -7,6 +7,11 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     psycopg2 = None
 
+# Reuse the same connection-string parsing as the live app (URL-decoding,
+# the sslmode=require default) instead of duplicating it here and risking
+# the two drifting apart.
+from db_backend import _build_postgres_params
+
 
 ROOT = Path(__file__).resolve().parent
 LOCAL_DB = ROOT / "homeschool.db"
@@ -260,7 +265,7 @@ def migrate():
         raise FileNotFoundError(f"Local database not found at {LOCAL_DB}")
 
     sqlite_conn = sqlite3.connect(LOCAL_DB)
-    pg_conn = psycopg2.connect(conn_str)
+    pg_conn = psycopg2.connect(**_build_postgres_params(conn_str))
     pg_conn.autocommit = False
     pg_cursor = pg_conn.cursor()
 

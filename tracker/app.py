@@ -1570,12 +1570,6 @@ def update_national_park(park_id, name, state, lat, lon, booklet_url="", region=
     conn.commit()
 
 
-def set_park_booklet_url(park_id, url):
-    conn.execute("UPDATE national_parks SET booklet_url = ? WHERE id = ?",
-                 (url, park_id))
-    conn.commit()
-
-
 def delete_national_park(park_id):
     conn.execute("DELETE FROM national_parks WHERE id = ?", (park_id,))
     conn.commit()
@@ -3465,7 +3459,7 @@ def render_day1_checklist(student_id, school_year):
 st.set_page_config(page_title="Homeschool", page_icon="📚", layout="wide")
 
 if "parent_authed" not in st.session_state:
-    st.session_state.parent_authed = True  # TESTING: parent lock bypassed — set back to False when done
+    st.session_state.parent_authed = False
 
 students_df = get_students()
 
