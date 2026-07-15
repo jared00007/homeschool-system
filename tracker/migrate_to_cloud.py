@@ -278,6 +278,17 @@ def migrate():
             insert_sql = f"INSERT INTO {table_name} ({col_sql}) VALUES ({placeholders})"
             for row in rows:
                 pg_cursor.execute(insert_sql, row)
+            # Rows just went in with their original SQLite ids preserved,
+            # so this table's own auto-increment sequence doesn't know
+            # about them — advance it past the highest migrated id, or the
+            # live app's next INSERT (which omits id and relies on the
+            # sequence) could collide with one of these rows.
+            if "id" in cols:
+                pg_cursor.execute(
+                    "SELECT setval(pg_get_serial_sequence(%s, 'id'), "
+                    f"(SELECT COALESCE(MAX(id), 1) FROM {table_name}))",
+                    (table_name,),
+                )
 
         pg_conn.commit()
         print(f"Migrated {len(SCHEMA)} tables from {LOCAL_DB} to cloud database.")
