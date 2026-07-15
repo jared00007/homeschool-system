@@ -25,6 +25,26 @@ For a proper cloud setup, use a managed Postgres service such as Supabase, Neon,
 
 If you want to keep the app working locally too, leave the local SQLite file in place and only set the cloud variable when you are ready to use the hosted database.
 
+### ⚠️ Use Supabase's Pooler connection string, not the Direct connection
+
+Supabase gives you two connection strings in the project dashboard (Settings
+→ Database → Connection string):
+
+- **Direct connection** (`db.<project-ref>.supabase.co`, port 5432) — this
+  host is **IPv6-only**. Most hosted platforms (including Streamlit
+  Community Cloud) don't have outbound IPv6, so this connection will fail
+  to resolve/connect from there. It works fine from a machine with IPv6.
+- **Session pooler** or **Transaction pooler** (host like
+  `aws-0-<region>.pooler.supabase.com`, username `postgres.<project-ref>`,
+  port `5432` or `6543`) — IPv4-compatible, works from any host. **Use one
+  of these for `DATABASE_URL` when deploying to Streamlit Cloud or any
+  other hosted platform.**
+
+If the app fails to connect, it now raises a clear error (instead of
+silently falling back to local SQLite) telling you the host/port it tried
+and the underlying error — check the Streamlit Cloud app logs ("Manage app"
+→ logs) for that message if data isn't loading.
+
 ## Step 3 — install dependencies
 Run from the repo root:
 

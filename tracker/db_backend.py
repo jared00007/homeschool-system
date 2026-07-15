@@ -23,6 +23,14 @@ class DbConnection:
             return sql
         adapted = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "BIGSERIAL PRIMARY KEY")
         adapted = adapted.replace("AUTOINCREMENT", "")
+        # The whole app is written against SQLite's "?" placeholder style;
+        # psycopg2 requires "%s". Escape any literal "%" first (e.g. in a
+        # LIKE pattern) so it isn't misread as a new placeholder, then swap
+        # every "?" for "%s". (Verified no query in this app has a literal
+        # "?" character outside of a placeholder position, and none use
+        # LIKE/"%" wildcards — safe to do this as a blind two-pass replace.)
+        adapted = adapted.replace("%", "%%")
+        adapted = adapted.replace("?", "%s")
         return adapted
 
     def execute(self, sql, params=()):
@@ -47,13 +55,6 @@ class DbConnection:
 
     def __getattr__(self, name):
         return getattr(self.conn, name)
-
-
-def _get_db_backend() -> str:
-    # Prefer an explicit connection string from environment or Streamlit secrets
-    if _get_connection_string():
-        return "postgres"
-    return "sqlite"
 
 
 def _get_connection_string() -> Optional[str]:
@@ -108,45 +109,73 @@ def _connect_sqlite(db_path: Path) -> DbConnection:
 
 
 def connect_database(db_path: Path) -> DbConnection:
-    backend = _get_db_backend()
-    print(f"Database backend selected: {backend}")
-    if backend == "postgres":
-        if psycopg2 is None:
-            raise RuntimeError("psycopg2 is not installed. Install it from requirements.txt.")
-        # Build connection parameters and pass as kwargs to psycopg2.connect
-        conn_str = _get_connection_string()
-        if not conn_str:
-            raise RuntimeError("DATABASE_URL not set for postgres backend")
+    conn_str = _get_connection_string()
+    if not conn_str:
+        # No cloud DB configured at all — SQLite is the intended backend,
+        # not a fallback from a failure.
+        print("No DATABASE_URL/SUPABASE_DB_URL configured — using local SQLite.")
+        return _connect_sqlite(db_path)
 
-        try:
-            params = _build_postgres_params(conn_str)
+    if psycopg2 is None:
+        raise RuntimeError(
+            "DATABASE_URL is set but psycopg2 is not installed — install it "
+            "from requirements.txt (psycopg2-binary)."
+        )
 
-            try:
-                if params.get('host'):
-                    addrs = socket.getaddrinfo(params['host'], params.get('port') or 5432)
-                    print(f"DNS resolution for {params['host']}: {addrs[:3]}")
-            except Exception as dns_exc:
-                print(f"DNS resolution failed for {params.get('host')}: {dns_exc}")
+    params = _build_postgres_params(conn_str)
 
-            conn = psycopg2.connect(**params)
-            conn.autocommit = False
-            return DbConnection("postgres", conn)
-        except Exception as exc:
-            print(f"Postgres connection failed; falling back to SQLite at {db_path}: {exc}")
-            return _connect_sqlite(db_path)
+    try:
+        if params.get("host"):
+            addrs = socket.getaddrinfo(params["host"], params.get("port") or 5432)
+            print(f"DNS resolution for {params['host']}: {addrs[:3]}")
+    except Exception as dns_exc:
+        print(f"DNS resolution failed for {params.get('host')}: {dns_exc}")
 
-    return _connect_sqlite(db_path)
+    try:
+        conn = psycopg2.connect(**params)
+    except Exception as exc:
+        # A connection string WAS configured — a failure here is a real
+        # setup problem, not "no cloud DB configured." Raise loudly instead
+        # of silently substituting local SQLite: that fallback used to make
+        # the app look like it "just works" while quietly not using the
+        # configured database (and, on most hosts, against an empty/
+        # ephemeral local file) — exactly the failure mode that's hard to
+        # notice until data you expect to see just isn't there.
+        raise RuntimeError(
+            f"Could not connect to the configured Postgres database "
+            f"(host={params.get('host')!r}, port={params.get('port')!r}, "
+            f"dbname={params.get('dbname')!r}): {exc}\n\n"
+            "Common Supabase-specific causes:\n"
+            "- Using the 'direct connection' string (port 5432, a "
+            "db.<ref>.supabase.co host) from a host without outbound IPv6 "
+            "— Supabase's direct connection is IPv6-only; use the Session "
+            "or Transaction Pooler connection string instead (host like "
+            "aws-0-<region>.pooler.supabase.com, username "
+            "postgres.<project-ref>, port 6543 or 5432).\n"
+            "- A password with special characters that needs URL-encoding "
+            "in the connection string.\n"
+            "- sslmode or firewall/network restrictions on the host running "
+            "this app."
+        ) from exc
+
+    conn.autocommit = False
+    print(f"Connected to Postgres at {params.get('host')}:{params.get('port')}")
+    return DbConnection("postgres", conn)
 
 
 def table_columns(conn: DbConnection, table_name: str) -> list:
     if conn.backend == "sqlite":
         return [row[1] for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
 
+    # Note: "?" here, not "%s" — DbConnection.execute()'s _adapt_sql() step
+    # converts "?" to "%s" for the postgres backend. Writing "%s" directly
+    # in a caller would get double-escaped by that same step (it escapes
+    # literal "%" to "%%" before translating placeholders).
     cursor = conn.execute(
         """
         SELECT column_name
         FROM information_schema.columns
-        WHERE table_name = %s
+        WHERE table_name = ?
         ORDER BY ordinal_position
         """,
         (table_name,),
@@ -163,7 +192,7 @@ def table_exists(conn: DbConnection, table_name: str) -> bool:
         return row is not None
 
     cursor = conn.execute(
-        "SELECT to_regclass(%s)",
+        "SELECT to_regclass(?)",
         (table_name,),
     )
     return cursor.fetchone()[0] is not None

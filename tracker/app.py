@@ -26,7 +26,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from tracker.db_backend import connect_database, table_columns, table_exists
+from db_backend import connect_database, table_columns, table_exists
 
 DB_PATH = Path(__file__).parent / "homeschool.db"
 UPLOADS_BASE = Path(__file__).parent / "uploads"
@@ -1210,13 +1210,13 @@ def get_conn():
         submitted_at TEXT,
         FOREIGN KEY (student_id) REFERENCES students (id))""")
     # migration: older DBs may lack the status/submitted_at columns
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(log_entries)").fetchall()]
+    cols = table_columns(conn, "log_entries")
     if "status" not in cols:
         conn.execute("ALTER TABLE log_entries ADD COLUMN status TEXT DEFAULT 'approved'")
     if "submitted_at" not in cols:
         conn.execute("ALTER TABLE log_entries ADD COLUMN submitted_at TEXT")
     # migration: older DBs may lack newer health_habits columns
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(health_habits)").fetchall()]
+    cols = table_columns(conn, "health_habits")
     if "journal" not in cols:
         conn.execute("ALTER TABLE health_habits ADD COLUMN journal TEXT")
     if "day_rating" not in cols:
@@ -1228,33 +1228,33 @@ def get_conn():
     if "lesson_hard_notes" not in cols:
         conn.execute("ALTER TABLE health_habits ADD COLUMN lesson_hard_notes TEXT")
     # migration: older DBs may lack the assignments photo_path/submitted_at columns
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(assignments)").fetchall()]
+    cols = table_columns(conn, "assignments")
     if "photo_path" not in cols:
         conn.execute("ALTER TABLE assignments ADD COLUMN photo_path TEXT")
     if "submitted_at" not in cols:
         conn.execute("ALTER TABLE assignments ADD COLUMN submitted_at TEXT")
     # migration: older DBs may lack the travel_entries badge_earned/submitted_at
     # columns (present if this table used to be travel_journal, pre-consolidation)
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(travel_entries)").fetchall()]
+    cols = table_columns(conn, "travel_entries")
     if "badge_earned" not in cols:
         conn.execute("ALTER TABLE travel_entries ADD COLUMN badge_earned INTEGER DEFAULT 0")
     if "submitted_at" not in cols:
         conn.execute("ALTER TABLE travel_entries ADD COLUMN submitted_at TEXT")
     # migration: older DBs may lack these newer per-table timestamp columns
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(link_reports)").fetchall()]
+    cols = table_columns(conn, "link_reports")
     if "submitted_at" not in cols:
         conn.execute("ALTER TABLE link_reports ADD COLUMN submitted_at TEXT")
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(proposals)").fetchall()]
+    cols = table_columns(conn, "proposals")
     if "submitted_at" not in cols:
         conn.execute("ALTER TABLE proposals ADD COLUMN submitted_at TEXT")
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(student_fun_projects)").fetchall()]
+    cols = table_columns(conn, "student_fun_projects")
     if "finished_at" not in cols:
         conn.execute("ALTER TABLE student_fun_projects ADD COLUMN finished_at TEXT")
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(student_books)").fetchall()]
+    cols = table_columns(conn, "student_books")
     if "finished_at" not in cols:
         conn.execute("ALTER TABLE student_books ADD COLUMN finished_at TEXT")
     # migration: older DBs may lack these national_parks columns
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(national_parks)").fetchall()]
+    cols = table_columns(conn, "national_parks")
     if "booklet_url" not in cols:
         conn.execute("ALTER TABLE national_parks ADD COLUMN booklet_url TEXT")
     if "region" not in cols:
@@ -3482,7 +3482,9 @@ if not st.session_state.welcome_seen:
     st.divider()
 
 if os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL"):
-    st.info("Cloud database is configured. If the connection is unavailable, this deployment will continue with an internal fallback store until it is fixed.")
+    st.info("Cloud database is configured. If the connection fails, the app "
+            "will show a connection error (with the host/port it tried) "
+            "instead of silently using a temporary local database.")
 
 with st.sidebar:
     st.title("📚 Homeschool")
