@@ -28,6 +28,12 @@ class _AdaptingCursor:
         self._cursor = cursor
         self._owner = owner
 
+    def _raw_execute(self, sql, params):
+        if params is None:
+            self._cursor.execute(sql)
+        else:
+            self._cursor.execute(sql, params)
+
     def execute(self, sql, params=None):
         sql = self._owner._adapt_sql(sql)
         # `conn` is one shared, module-level connection for the whole app
@@ -40,10 +46,21 @@ class _AdaptingCursor:
         # exactly what "page goes blank, nothing in the logs" looks like).
         with self._owner._lock:
             try:
-                if params is None:
-                    self._cursor.execute(sql)
-                else:
-                    self._cursor.execute(sql, params)
+                self._raw_execute(sql, params)
+            except (psycopg2.OperationalError, psycopg2.InterfaceError):
+                # The connection itself has gone bad — most likely
+                # Supabase's pooler silently closed it server-side after
+                # sitting idle (a long-lived process reusing one
+                # connection can easily outlast a pooler's idle timeout).
+                # A dead socket doesn't fail fast: the next query can hang
+                # indefinitely waiting for a response that will never
+                # arrive, which is exactly "page goes blank, nothing in
+                # the logs" — no exception ever gets the chance to be
+                # raised or printed. Reconnect once and retry rather than
+                # requiring a manual app restart every time this happens.
+                self._owner._reconnect()
+                self._cursor = self._owner.conn.cursor()
+                self._raw_execute(sql, params)
             except Exception:
                 # psycopg2 puts a connection into an "aborted transaction"
                 # state after any failed query, where every subsequent
@@ -106,6 +123,20 @@ class DbConnection:
                 return self.conn.execute(sql, params)
         return self.cursor().execute(sql, params)
 
+    def _reconnect(self):
+        """Re-establish the underlying Postgres connection — used when the
+        pooled connection has gone stale (closed server-side while idle)
+        and the next query would otherwise hang against a dead socket."""
+        conn_str = _get_connection_string()
+        params = _build_postgres_params(conn_str)
+        new_conn = psycopg2.connect(**params)
+        new_conn.autocommit = False
+        try:
+            self.conn.close()
+        except Exception:
+            pass  # the old connection is already broken; closing it is best-effort
+        self.conn = new_conn
+
     def commit(self):
         with self._lock:
             self.conn.commit()
@@ -167,6 +198,24 @@ def _build_postgres_params(conn_str: str) -> dict:
 
     if "sslmode" not in params:
         params["sslmode"] = "require"
+
+    # This app holds one connection open for the entire life of the
+    # process (not one per request), which can easily outlast a pooler's
+    # idle-connection timeout — Supabase's pgbouncer can silently close a
+    # connection server-side after it sits idle. Without these, the next
+    # query on that now-dead socket doesn't fail fast: it can hang
+    # indefinitely waiting for a response that will never come, with
+    # nothing to log because nothing has actually failed yet. TCP
+    # keepalives let the OS detect that within ~40s of idling instead of
+    # never; connect_timeout bounds how long establishing a *new*
+    # connection can take; statement_timeout bounds how long the server
+    # will run any single query before killing it server-side.
+    params.setdefault("connect_timeout", 10)
+    params.setdefault("keepalives", 1)
+    params.setdefault("keepalives_idle", 20)
+    params.setdefault("keepalives_interval", 5)
+    params.setdefault("keepalives_count", 4)
+    params.setdefault("options", "-c statement_timeout=15000")
 
     return params
 
