@@ -26,12 +26,22 @@ his own hours, grading, health check-ins, a travel/geography journal, and
 the legal side (Declaration of Intent reminders, annual assessment tracking,
 exportable compliance packet).
 
-The product is now being migrated to a simple cloud-backed architecture so it
-can run from a hosted environment while keeping the same core workflow.
+**Now cloud-hosted.** As of this section, the product runs two ways:
+locally (double-click launcher, local SQLite file, the original design),
+and as a public Streamlit Community Cloud deployment backed by a Supabase
+Postgres database, reachable from any device via a web address. Both are
+the same codebase — `tracker/db_backend.py` picks whichever database is
+configured; the app itself doesn't know or care which one it's talking to.
+See `CLOUD_DEPLOYMENT.md` for setup/troubleshooting and
+`LEARNING_GUIDE_TECHNICAL.md` / `LEARNING_GUIDE_SIMPLE.md` for the full
+story of how that migration actually went.
 
 Design principles that shape every feature decision here:
-- **Nothing leaves this machine.** No cloud, no accounts, no third-party
-  API calls except the curriculum links the student clicks out to.
+- **Local-first, cloud-optional.** The app was built local-only ("nothing
+  leaves this machine") and that's still the zero-config default — no
+  `DATABASE_URL` set, no cloud involved. The cloud deployment is an
+  explicit opt-in on top of the same code, not a replacement for the local
+  mode.
 - **The student can log things; only the parent can certify them.** Almost
   every student-facing action creates a record a parent reviews, rather
   than something that silently counts.
@@ -112,10 +122,44 @@ Design principles that shape every feature decision here:
 ### Auth
 - Student mode: no password, always available.
 - Parent mode: password-gated (hashed+salted), with an explicit lock
-  button. *(Currently bypassed for testing — see §5, Known Gaps.)*
+  button. Real by default — a prior testing bypass that defaulted this
+  open has been fixed (was a live issue once the app got a public URL).
+
+### Deployment (cloud + local)
+- Runs locally (SQLite, zero config) or as a public Streamlit Community
+  Cloud deployment backed by Supabase Postgres — same code, one
+  environment variable (`DATABASE_URL`) decides which.
+- A migration script (`tracker/migrate_to_cloud.py`) does a one-time copy
+  of existing local data into the cloud database, preserving IDs and
+  correctly advancing Postgres's auto-increment sequences afterward so new
+  rows don't collide with migrated ones.
+- The app shows its actual connected database (and host) directly on-page
+  — not just whether cloud config is present, but whether the connection
+  actually succeeded.
 
 ## 3. Recently shipped (most recent first)
 
+- **Cloud deployment**: the app now runs on Streamlit Community Cloud
+  against a Supabase Postgres database, in addition to local SQLite.
+  Involved building a backend-agnostic connection layer
+  (`tracker/db_backend.py`), fixing a silent connection-failure fallback
+  that was masking real errors, translating SQLite-style query
+  placeholders to Postgres's for the ~120 queries in the app, replacing
+  raw `PRAGMA`/`sqlite_master` schema-introspection calls with
+  backend-aware equivalents, and resolving a two-entry-point import
+  conflict between the local launcher and the Cloud deployment shim. Full
+  story: `LEARNING_GUIDE_TECHNICAL.md` (dev version) /
+  `LEARNING_GUIDE_SIMPLE.md` (plain-language version).
+- **Full code review pass**: fixed a live security issue (parent-mode
+  password lock was defaulting to unlocked — harmless locally, a real
+  problem on a public URL), a Postgres correctness bug (a single failed
+  query could silently break the app for every user until restart, now
+  fixed with automatic rollback), and removed dead code.
+- **Repo cleanup**: an entire Python virtual environment (~8,750 files)
+  had been committed to git by accident — removed from tracking. Non-
+  runtime files (a stale backup, an orphaned prototype, superseded docs)
+  moved into a clearly labeled `local-only/` folder instead of cluttering
+  the main tree.
 - Auto-captured `submitted_at`/`finished_at` datetime stamps on every
   table where the student submits something or marks it done (hour log,
   quizzes/grades, travel entries, link reports, proposals, finished books/
@@ -147,10 +191,14 @@ Full raw history: `enhancements` file, `---work done---` section.
   dedicated lesson/reading section?
 
 ### Plausible next enhancements (not yet requested, worth considering)
+- **Move photo uploads to Supabase Storage.** Travel journal photos and
+  graded-work photos are still local-disk-only; on the Streamlit Cloud
+  deployment specifically, the filesystem is ephemeral, so uploads there
+  won't survive a redeploy/restart. This is the most concrete gap left by
+  the cloud migration.
 - Surface the new `submitted_at`/`finished_at` timestamps somewhere in the
   UI — e.g. next to items in the parent Review & Approve queue, or on
   graded/finished work — now that the data exists.
-- Turn off the parent-mode password bypass before any real use (see §5).
 - Tie travel entries into hour-logging (explicitly deferred earlier —
   "let's not include hours to tie in yet" — revisit once the writing-prompt
   pattern proves out).
@@ -158,6 +206,11 @@ Full raw history: `enhancements` file, `---work done---` section.
   once entry volume grows enough that a flat chronological list gets long.
 - Expand the worksheet/printable-resource list beyond Grading (e.g. a
   similar resource list for the 8th Grade Scope reference tab).
+- A real automated test suite. Verification so far has been `AppTest`
+  scripts run by hand during development, not checked into the repo or
+  run in CI — fine for a single-family app iterated on this closely, but
+  the first thing that would need to exist before anyone else touches
+  this code without the same context.
 
 ### Exploratory / long-horizon ideas
 - Multi-year view — the app currently centers on "school_year" as a loose
@@ -171,10 +224,11 @@ Full raw history: `enhancements` file, `---work done---` section.
 
 ## 5. Known gaps / not yet solved
 
-- **Parent-mode password bypass is active for testing** —
-  `st.session_state.parent_authed` defaults to `True` at boot. Must be
-  flipped back to `False` before real use; currently anyone can open
-  Parent mode with no password prompt.
+- **Photo uploads don't survive on the cloud deployment.** Still written
+  to local disk (`tracker/uploads/`); Streamlit Community Cloud's
+  filesystem is ephemeral, so anything uploaded there is gone on the next
+  restart/redeploy. Not an issue for local use. See Roadmap (Supabase
+  Storage) for the fix.
 - `submitted_at`/`finished_at` fields exist and populate correctly but
   aren't shown anywhere yet (see Roadmap above).
 - No automated test suite — verification has been manual (`AppTest`
@@ -183,6 +237,11 @@ Full raw history: `enhancements` file, `---work done---` section.
 - Multi-student support exists at the schema level (`students` table) but
   is untested in practice — the app has only ever been used with one real
   student.
+- `migrate_to_cloud.py` copies data one-way, local → cloud, and doesn't
+  support re-running safely once data already exists on the cloud side
+  (it'll hit primary-key conflicts on tables that aren't empty). Fine for
+  the one-time initial migration; would need real upsert logic to become
+  a repeatable sync.
 
 ## 6. Keeping this doc current
 

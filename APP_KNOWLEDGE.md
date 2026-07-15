@@ -8,22 +8,28 @@ doc is exhaustive and technical, for a coding assistant.
 
 ## 1. What this is
 
-A single-file **Streamlit + SQLite** app that runs one WA-state homeschool
-family's entire operation: daily schedule, curriculum links, hour/day
-compliance tracking (1,000 hrs / 180 days), parent-approval workflow,
-grading, health check-ins, a full travel-log/journal system, and WA DOI
-legal-compliance tracking (RCW 28A.200.010 annual assessment requirement).
+A **Streamlit** app that runs one WA-state homeschool family's entire
+operation: daily schedule, curriculum links, hour/day compliance tracking
+(1,000 hrs / 180 days), parent-approval workflow, grading, health check-ins,
+a full travel-log/journal system, and WA DOI legal-compliance tracking
+(RCW 28A.200.010 annual assessment requirement).
 
 - Built for one specific student (currently: an 8th grader, WA state).
-- Runs entirely local. `Nothing leaves your machine` is a stated design
-  principle in the app's own docstring — no cloud, no accounts, no network
-  calls except the curriculum resource links the student clicks out to.
-- Single entry point: `tracker/app.py` (~4,200 lines). No other Python
-  files, no package structure — everything (schema, queries, rendering) is
-  in this one file, top to bottom.
+- **Runs two ways**: locally with a SQLite file (the original design,
+  still the zero-config default), or as a public Streamlit Community Cloud
+  deployment backed by Supabase Postgres. Same codebase — a small backend
+  abstraction (`tracker/db_backend.py`, see §4) decides which database is
+  in play; the rest of the app never knows or cares. "Nothing leaves this
+  machine" is still true for local use; the cloud deployment is an
+  explicit opt-in on top of the same code, not a different product.
+- Core logic lives in one file: `tracker/app.py` (~4,200 lines). No ORM,
+  no package structure beyond the one `db_backend.py` module it depends on
+  — everything else (schema, queries, rendering) is in this one file, top
+  to bottom.
 
-Run with `streamlit run app.py` from `tracker/`, or double-click
-`start-tracker.command` at repo root (handles venv/deps setup).
+Run locally with `streamlit run app.py` from `tracker/` (or double-click
+`start-tracker.command` at repo root, which handles venv/deps setup). The
+cloud deployment's entry point is different — see §4.
 
 ## 2. File layout
 
@@ -31,28 +37,43 @@ Run with `streamlit run app.py` from `tracker/`, or double-click
 homeschool-system/
 ├── README.md                    ← human-facing (parent) doc
 ├── APP_KNOWLEDGE.md             ← this file
-├── start-tracker.command        ← double-click launcher
+├── PRODUCT.md                   ← living product/roadmap doc
+├── CLOUD_DEPLOYMENT.md          ← cloud setup + troubleshooting
+├── LEARNING_GUIDE_TECHNICAL.md  ← how the cloud migration was built (dev)
+├── LEARNING_GUIDE_SIMPLE.md     ← same story, plain language
+├── app.py                       ← repo-root entry shim for Streamlit Cloud
+├── requirements.txt             ← single source of truth for dependencies
+├── start-tracker.command        ← local double-click launcher
 ├── enhancements                 ← plain-text running list of feature
 │                                   requests (---ideas---/---adds---/
 │                                   ---removal---/---work done---)
 ├── tracker/
-│   ├── app.py                   ← the entire app
-│   ├── requirements.txt         ← streamlit>=1.35, pandas>=2.0, plotly>=5.20
-│   ├── homeschool.db            ← SQLite DB, created on first run
-│   ├── uploads/
-│   │   ├── journal/             ← travel entry photos
-│   │   └── grading/             ← photos of handwritten graded work
-│   └── venv/
+│   ├── app.py                   ← the actual application (imported by
+│   │                                both entry points, see §4)
+│   ├── db_backend.py             ← SQLite/Postgres connection abstraction
+│   ├── migrate_to_cloud.py       ← one-time local→cloud data copy (manual)
+│   ├── homeschool.db             ← local SQLite DB, created on first run
+│   │                                (gitignored)
+│   ├── uploads/                  ← photos (gitignored; local-disk only,
+│   │                                see §4 for the cloud caveat)
+│   │   ├── journal/              ← travel entry photos
+│   │   └── grading/              ← photos of handwritten graded work
+│   └── venv/                     ← local Python env (gitignored)
+├── .streamlit/
+│   ├── secrets.toml              ← real local secrets (gitignored)
+│   └── secrets.toml.example      ← template, safe to commit
 ├── curriculum/
 │   └── 8th-grade-curriculum-map.md
-└── resources/
-    └── links.md
+├── resources/
+│   └── links.md
+└── local-only/                   ← everything not on the cloud app's
+                                      runtime path — see local-only/README.md
 ```
 
 No ORM. Every table is raw SQL via a single module-level `conn =
-sqlite3.connect(...)` (thread-unsafe flag `check_same_thread=False` is set
-since Streamlit can run callbacks off the main thread). All reads go through
-`pd.read_sql(...)`, all writes are `conn.execute(...); conn.commit()`.
+get_conn()` (a `DbConnection` wrapper around either `sqlite3` or
+`psycopg2` — see §4). All reads go through `pd.read_sql(...)`, all writes
+are `conn.execute(...); conn.commit()`.
 
 ## 3. Modes & auth
 
@@ -71,10 +92,14 @@ stored in the `settings` table as `pw_hash`/`pw_salt`. First Parent-mode
 visit prompts to *create* the password; after that it's required to unlock,
 with an explicit "Lock parent mode" button.
 
-**⚠️ Testing bypass currently active**: `st.session_state.parent_authed`
-defaults to `True` at boot (see `app.py` around the `# TESTING:` comment
-near `st.set_page_config`). This must be flipped back to `False` before any
-real use — currently anyone can open Parent mode with zero password prompt.
+`st.session_state.parent_authed` defaults to `False` at boot — this used to
+default to `True` behind a `# TESTING` comment, which was harmless for
+local-only use but became a real open-access hole once this app got a
+public Streamlit Cloud URL (anyone visiting could reach Parent mode with no
+password prompt at all). Fixed. **Do not reintroduce a default-open
+bypass** — if you need to skip auth for a specific local debugging session,
+do it by temporarily setting the session state yourself, not by changing
+the shipped default.
 
 **Two different security models coexist by design, do not conflate them:**
 - The parent password is hashed+salted (real, if lightweight, security).
@@ -83,14 +108,151 @@ real use — currently anyone can open Parent mode with zero password prompt.
   them to log in himself. The UI shows an explicit warning caption about
   this. Don't "fix" this by hashing it; that would break the feature.
 
-## 4. Data model (SQLite, `tracker/homeschool.db`)
+## 4. Database backend & cloud deployment
+
+`tracker/db_backend.py` is a small module (~200 lines) that lets the exact
+same application code run against either SQLite or Postgres. It's the one
+piece of the system that's backend-aware; everything in `tracker/app.py`
+just calls `conn.execute(sql, params)` and has no idea which database is
+actually behind it.
+
+### How the backend is chosen
+
+`connect_database()`: if `DATABASE_URL` (or `SUPABASE_DB_URL`) is set — in
+the environment, or in Streamlit secrets — connect to Postgres. Otherwise,
+local SQLite (`tracker/homeschool.db`). That's the entire decision tree.
+
+- **No connection string configured** → SQLite. This is the normal local
+  default, not a fallback-from-failure.
+- **Connection string configured but the connection fails** → raises a
+  `RuntimeError` with the host/port/dbname and the real underlying error.
+  Does **not** silently fall back to SQLite. (An earlier version did fall
+  back silently — that made a broken cloud config look like a working app
+  quietly running against an empty local database, which is the worst
+  failure mode for debugging. Don't reintroduce it.)
+
+### The `DbConnection` wrapper
+
+Wraps either a `sqlite3.Connection` or a `psycopg2` connection behind one
+interface: `.execute(sql, params)`, `.commit()`, `.rollback()`, `.close()`,
+`.cursor()`. For the Postgres backend, `.execute()`:
+1. Runs the SQL through `_adapt_sql()`, which translates SQLite syntax to
+   Postgres syntax:
+   - `INTEGER PRIMARY KEY AUTOINCREMENT` → `BIGSERIAL PRIMARY KEY`
+   - escapes literal `%` to `%%` (so it can't collide with a placeholder),
+     **then** translates `?` → `%s`
+2. Wraps the actual `cursor.execute()` in a try/except that calls
+   `self.conn.rollback()` before re-raising on any failure.
+
+That rollback matters more than it looks: `conn` is one shared,
+module-level connection for the whole app process (not per-request).
+Postgres puts a connection into an "aborted transaction" state after any
+failed query — every subsequent command on that connection fails too,
+until a rollback happens. Without this, one bad query (e.g. a constraint
+violation) could silently break the app for every user until the process
+restarted. This was found and fixed in a code-review pass, not something
+that showed up as an obvious bug — if you're touching `DbConnection.execute()`,
+keep this behavior.
+
+**Every query in the codebase must use `?` placeholders, never write `%s`
+directly** — even in `db_backend.py`'s own helper functions
+(`table_columns()`, `table_exists()`). Writing `%s` by hand gets
+double-escaped by the `%` → `%%` step above (confirmed as a real bug,
+caught before shipping). `?` is the one placeholder convention across the
+entire codebase; the translation to `%s` happens in exactly one place.
+
+### Schema introspection
+
+Two SQLite-only constructs have no Postgres equivalent, so they're
+abstracted too:
+- `table_columns(conn, table_name)` — `PRAGMA table_info` on SQLite,
+  `information_schema.columns` query on Postgres.
+- `table_exists(conn, table_name)` — `sqlite_master` lookup on SQLite,
+  `to_regclass()` on Postgres.
+
+`get_conn()`'s migration code (in `tracker/app.py`) calls these, never raw
+`PRAGMA`/`sqlite_master` directly — if you add a new migration guard,
+follow that pattern.
+
+### The two entry points (read this before touching imports)
+
+- **Local**: `start-tracker.command` runs `streamlit run app.py` from
+  *inside* `tracker/`. `tracker/app.py` executes as the main script, so
+  Python adds `tracker/`'s own directory to `sys.path` — `db_backend`
+  (same-directory import) resolves; `tracker.db_backend` does not (no
+  parent `tracker` package visible from inside `tracker/`).
+- **Cloud**: Streamlit Community Cloud's main module is the repo-root
+  `app.py` — a shim:
+  ```python
+  ROOT = Path(__file__).resolve().parent
+  sys.path.insert(0, str(ROOT))
+  from tracker.app import *
+  ```
+  This imports `tracker/app.py` as the *submodule* `tracker.app`. A
+  submodule import does **not** add its own directory to `sys.path` — only
+  the repo root (explicitly inserted) is on the path, so `tracker.db_backend`
+  resolves and plain `db_backend` throws `ModuleNotFoundError`.
+
+  `tracker/app.py` handles both with a try/except:
+  ```python
+  try:
+      from db_backend import connect_database, table_columns, table_exists
+  except ImportError:
+      from tracker.db_backend import connect_database, table_columns, table_exists
+  ```
+  **Do not simplify this to a single import style** — each style alone
+  breaks one of the two entry points (confirmed by actually hitting both
+  failure modes in production before landing on the try/except).
+
+### Migrating local data to the cloud
+
+`tracker/migrate_to_cloud.py` — a standalone script, run manually by a
+human (`DATABASE_URL=... python3 tracker/migrate_to_cloud.py` from the
+repo root), never executed by the live app itself. Copies every table from
+local SQLite into Postgres, preserving original row IDs (so foreign-key
+references between tables stay intact), then advances each table's
+Postgres sequence past `MAX(id)` so the live app's next new row (which
+lets the sequence assign an ID) doesn't collide with a migrated one:
+```sql
+SELECT setval(pg_get_serial_sequence(%s, 'id'),
+       (SELECT COALESCE(MAX(id), 1) FROM <table>))
+```
+One-way, one-time — re-running against a non-empty cloud database will hit
+primary-key conflicts, it doesn't upsert.
+
+### On-page connection status
+
+The app shows its actual connected backend directly in the UI (a banner
+near the top, right after the welcome section) — green with the host if
+Postgres connected successfully, yellow if something's inconsistent. This
+exists because Streamlit Cloud's log viewer doesn't reliably surface this
+app's `print()` output from module-import time; the on-page status,
+computed from the real `conn.backend` after `get_conn()` has already run
+(or already raised), is the trustworthy signal — don't rely on hosting
+logs alone to confirm a cloud deployment actually connected.
+
+### Known cloud-specific gap
+
+Photo uploads (`tracker/uploads/`) are still local-disk-only. Streamlit
+Community Cloud's filesystem is ephemeral — uploads there won't survive a
+redeploy/restart. Moving these to Supabase Storage is tracked as a roadmap
+item in `PRODUCT.md`, not yet built.
+
+Full deployment setup and a troubleshooting list built from real issues
+hit getting this working: `CLOUD_DEPLOYMENT.md`. Full narrative of the
+migration, including things that were tried and didn't work:
+`LEARNING_GUIDE_TECHNICAL.md`.
+
+## 5. Data model (`students`, `log_entries`, etc. — SQLite locally / Postgres in the cloud)
 
 All migrations happen in `get_conn()` at the top of the file: a fresh
-`CREATE TABLE IF NOT EXISTS` for every table, followed by `PRAGMA
-table_info(...)` + `ALTER TABLE ... ADD COLUMN` guards for columns added
-after a table's original ship date. **Every new column must be added in
-both places** — the CREATE (for fresh installs) and a guarded ALTER (for
-this family's already-seeded DB) — or existing installs silently break.
+`CREATE TABLE IF NOT EXISTS` for every table, followed by `table_columns()`
++ `ALTER TABLE ... ADD COLUMN` guards for columns added after a table's
+original ship date. **Every new column must be added in both places** —
+the CREATE (for fresh installs) and a guarded ALTER (for already-seeded
+DBs, local or cloud) — or existing installs silently break. Table/column
+DDL is written once in SQLite syntax; `db_backend.py` adapts it for
+Postgres automatically (§4) — don't hand-write Postgres-specific DDL here.
 
 | Table | Purpose | Key columns |
 |---|---|---|
@@ -110,7 +272,7 @@ this family's already-seeded DB) — or existing installs silently break.
 | `parent_checkins` | Free-form parent journal about the homeschool experience | checkin_date, notes |
 | `national_parks` | Reference pool of all 63 NPS national parks (seeded once) | name, state, lat, lon, booklet_url, region (one of `NPS_REGIONS`) |
 | `major_cities` | Reference pool — every state capital + a few extra | name, state, lat, lon |
-| `travel_entries` | **Unified** table for every kind of travel log entry — park visit, state visit, city visit, or freeform journal entry. One entry tags *at most one* of state/park/city (see §6) | entry_date, title, content, photo_path, tag_state, tag_park_id, tag_city_id, badge_earned, **submitted_at** |
+| `travel_entries` | **Unified** table for every kind of travel log entry — park visit, state visit, city visit, or freeform journal entry. One entry tags *at most one* of state/park/city (see §7) | entry_date, title, content, photo_path, tag_state, tag_park_id, tag_city_id, badge_earned, **submitted_at** |
 | `link_reports` | Student-submitted "this link is broken" reports for parent review | url, description, status (pending/fixed/dismissed), parent_note, resolved_date, **submitted_at** |
 
 Bolded columns (`submitted_at` / `finished_at`) are auto-captured full
@@ -118,9 +280,9 @@ datetimes (`datetime.now().isoformat(timespec="seconds")`), written
 server-side at the moment of insert/status-change, **not user-editable**,
 and distinct from the adjacent user-facing date field (which the student/
 parent can pick/backdate). Added across every "student submits or marks
-done" table per an explicit ask — see §8.
+done" table per an explicit ask — see §9.
 
-## 5. Date handling — read this before touching any date
+## 6. Date handling — read this before touching any date
 
 - **Storage is always ISO** (`YYYY-MM-DD`, or full ISO datetime for the
   `submitted_at`/`finished_at` columns). Never change this — sorting,
@@ -139,7 +301,7 @@ done" table per an explicit ask — see §8.
   MM-DD-YYYY into it would hurt readability without matching what was
   actually asked for.
 
-## 6. Travel Log — architecture and history (important, easy to get wrong)
+## 7. Travel Log — architecture and history (important, easy to get wrong)
 
 This subsystem went through several redesigns in one session; the *current*
 shape is the one described here — don't reintroduce the earlier ones.
@@ -187,7 +349,9 @@ shape is the one described here — don't reintroduce the earlier ones.
   `travel_journal` to `travel_entries` (guarded to run **before** the fresh
   `CREATE TABLE IF NOT EXISTS travel_entries`, otherwise the empty new table
   shadows the rename and old data is orphaned — this was a real bug, caught
-  and fixed), then dropping the three legacy per-type tables.
+  and fixed), then dropping the three legacy per-type tables. This whole
+  guard only runs on the SQLite backend (`if conn.backend == "sqlite":`) —
+  a fresh Postgres database never has the legacy tables to migrate from.
 - Map (`render_travel_map`): Plotly `Scattergeo` choropleth of US states
   (2-color: visited/not, from the dataviz palette) plus emoji markers for
   parks (🏔️, colored by NPS region via `get_region_color_map()`, using the
@@ -204,7 +368,7 @@ shape is the one described here — don't reintroduce the earlier ones.
   canonical list doesn't get a muted/last-resort color for their own most-
   visited region.
 
-## 7. Feature tour by tab
+## 8. Feature tour by tab
 
 ### Student mode tabs
 (`🚀 Day 1 & Day 2 Checklist`, `🎯 Electives & Books`, `📅 Today`, `📆
@@ -231,7 +395,7 @@ Log`, `📝 Quizzes`, `🔑 My Logins`, `🏆 My Grades`)
   home-based students; explicitly not tracked/graded.
 - **Make It Fun**: fun/enrichment project picker (`fun_project_pool`),
   separate from core academics; students can propose new ones.
-- **Travel Log**: see §6.
+- **Travel Log**: see §7.
 - **Quizzes**: `QUIZ_BANK` — subject → topic → 5 multiple-choice questions,
   currently covering Mathematics, Science, Social Studies, History, Reading,
   Writing, Health (17 topics total). Auto-graded on submit, writes straight
@@ -269,7 +433,7 @@ Log`, `📝 Quizzes`, `🔑 My Logins`, `🏆 My Grades`)
 - **8th Grade Scope**: same reference view as student mode.
 - **Make It Fun**: fun-project pool admin.
 - **Travel Log**: same shared `render_travel_log()` as student mode (see
-  §6), plus national-park and major-city pool admin panels.
+  §7), plus national-park and major-city pool admin panels.
 - **Accounts**: the checklist of every curriculum-linked service that needs
   a login (`ACCOUNT_SERVICES` — 14 services incl. Khan Academy, CommonLit,
   ReadWorks, CK-12, Duolingo, Code.org, etc.), a custom-account add form,
@@ -283,11 +447,12 @@ Log`, `📝 Quizzes`, `🔑 My Logins`, `🏆 My Grades`)
   annual compliance packet / future transcript source.
 - **Settings**: change parent password.
 
-## 8. Conventions to follow when extending this app
+## 9. Conventions to follow when extending this app
 
-- **Migration discipline** (§4): every new column in both the CREATE and a
-  guarded ALTER, every new table needs a fresh `CREATE TABLE IF NOT EXISTS`.
-- **Date discipline** (§5): ISO storage, `MM-DD-YYYY` display via
+- **Migration discipline** (§5): every new column in both the CREATE and a
+  guarded ALTER (using `table_columns()`, not raw `PRAGMA`), every new
+  table needs a fresh `CREATE TABLE IF NOT EXISTS`.
+- **Date discipline** (§6): ISO storage, `MM-DD-YYYY` display via
   `fmt_date()`, `format="MM-DD-YYYY"` on every `st.date_input`.
 - **Auto-timestamp on student submissions/completions**: any new
   student-submits or student-marks-done flow should get its own
@@ -311,30 +476,36 @@ Log`, `📝 Quizzes`, `🔑 My Logins`, `🏆 My Grades`)
   subdirs: `"journal"` (travel entries) and `"grading"` (graded-work
   photos). Always pair with cleanup: the corresponding `delete_*` function
   must `unlink()` the file (guarded with `.exists()` or
-  `missing_ok=True`) before/alongside the DB row delete.
+  `missing_ok=True`) before/alongside the DB row delete. Remember: on the
+  cloud deployment this is still local-disk-only and ephemeral (§4) — don't
+  assume an uploaded photo persists there.
 - **Two security models, don't conflate**: parent password is hashed
   (`hashlib.sha256` + `secrets.token_hex(16)` salt); external-site
   `accounts` passwords are plain text on purpose, with an on-screen warning.
+- **`?` placeholders everywhere, never `%s`** — even inside `db_backend.py`
+  itself (§4). The translation happens in exactly one place.
 - **Color palette**: any new chart/map element should pull from the
   dataviz skill's validated palette (`MAP_CITY_COLOR`, `MAP_REGION_PALETTE`,
   status colors, etc.), not ad-hoc hex — load the `dataviz` skill before
   adding chart color logic.
 - **No comments explaining WHAT code does** — this file's existing comment
   style is sparse, used only for non-obvious WHY (e.g. the migration-order
-  bug note in `get_conn()`, the NPS region-color rationale). Match that
-  density; don't add narrative comments.
+  bug note in `get_conn()`, the NPS region-color rationale, the dual-import
+  try/except). Match that density; don't add narrative comments.
 
-## 9. Testing this app
+## 10. Testing this app
 
 There is no formal test suite. Verification throughout development has been
 via:
 
-1. **Syntax**: `python3 -m py_compile app.py`.
+1. **Syntax**: `python3 -m py_compile app.py db_backend.py migrate_to_cloud.py`.
 2. **Boot check**: `python3 -c "import app"` from `tracker/` with the venv
    active — this executes `get_conn()` at import time (module-level `conn =
    get_conn()`), so it's the fastest way to confirm migrations run clean
    and check the resulting schema via `sqlite3 homeschool.db "PRAGMA
-   table_info(...)"` / `.tables`.
+   table_info(...)"` / `.tables`. To check the *other* entry point (the
+   repo-root shim), run the same kind of check from the repo root instead
+   — the two exercise different import paths (§4) and both need to work.
 3. **`streamlit.testing.v1.AppTest`** — the primary interaction-level
    verification tool. Pattern:
    ```python
@@ -363,11 +534,19 @@ via:
 4. **Always clean up test data written to the real `homeschool.db`** after
    an `AppTest` run — this is the family's actual local database, not a
    fixture. `DELETE FROM <table> WHERE <whatever uniquely identifies the
-   test row>` after every verification pass. A backlog of ~16 stray test
-   rows (fake park/state/city visits) was found and cleaned up mid-session
-   from exactly this kind of leftover.
+   test row>` after every verification pass.
+5. **For `db_backend.py`'s Postgres-only logic, verify without a live
+   Postgres server** by calling its functions directly and inspecting
+   output/behavior: feed known SQL through `_adapt_sql()` and check the
+   translated string; feed a deliberately-unreachable connection string
+   through `connect_database()` and confirm it raises the expected
+   `RuntimeError` rather than silently falling back. Only confirm an
+   actual live connection via the on-page status banner (§4) once
+   deployed — don't assume `AppTest` alone proves the Postgres path works,
+   it only exercises the SQLite path unless `DATABASE_URL` happens to be
+   set in that environment.
 
-## 10. Notable constants (for quick reference, values may drift — check source)
+## 11. Notable constants (for quick reference, values may drift — check source)
 
 - `WA_SUBJECTS` — the 11 WA-recognized subject areas tracked for coverage.
 - `REQUIRED_HOURS = 1000`, `REQUIRED_DAYS = 180` — WA compliance targets.
@@ -385,14 +564,17 @@ via:
   — seed data, inserted once on first run if the corresponding pool table
   is empty.
 
-## 11. Known open items (as of this doc)
+## 12. Known open items (as of this doc)
 
-- Parent-mode password bypass is still active for testing (§3) — must be
-  turned off before real use.
 - `submitted_at`/`finished_at` timestamp columns exist and populate
   correctly but aren't surfaced anywhere in the UI yet (pure backend
   capture) — a natural follow-up would be showing them in the parent
   review queues.
+- Photo uploads don't survive on the cloud deployment (§4) — moving to
+  Supabase Storage is the fix, not yet built.
+- No automated test suite — see §10 for the manual verification approach
+  used so far.
 - Check the `enhancements` file at repo root for the live backlog of
   requested-but-not-yet-built features (`---adds---` section) and a log of
-  what's already shipped (`---work done---`).
+  what's already shipped (`---work done---`), and `PRODUCT.md` for the
+  organized roadmap built from that backlog.
