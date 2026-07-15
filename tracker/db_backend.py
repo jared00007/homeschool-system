@@ -208,14 +208,19 @@ def _build_postgres_params(conn_str: str) -> dict:
     # nothing to log because nothing has actually failed yet. TCP
     # keepalives let the OS detect that within ~40s of idling instead of
     # never; connect_timeout bounds how long establishing a *new*
-    # connection can take; statement_timeout bounds how long the server
-    # will run any single query before killing it server-side.
+    # connection can take.
+    #
+    # Deliberately NOT setting statement_timeout via the "options" startup
+    # parameter here: that's a session-level GUC, and this connection goes
+    # through Supabase's *transaction-mode* pooler (port 6543) — those
+    # don't reliably support session-level SET/options the same way a
+    # direct connection does, and setting one broke the connection
+    # entirely. Not worth the risk for a nice-to-have safety net.
     params.setdefault("connect_timeout", 10)
     params.setdefault("keepalives", 1)
     params.setdefault("keepalives_idle", 20)
     params.setdefault("keepalives_interval", 5)
     params.setdefault("keepalives_count", 4)
-    params.setdefault("options", "-c statement_timeout=15000")
 
     return params
 
