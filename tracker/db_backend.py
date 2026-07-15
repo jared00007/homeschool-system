@@ -11,6 +11,45 @@ except Exception:  # pragma: no cover - optional dependency
     psycopg2 = None
 
 
+class _AdaptingCursor:
+    """Wraps a real Postgres cursor so the ?-to-%s translation and the
+    rollback-on-error safety net apply no matter how the cursor's
+    .execute() gets called — including by code we don't control.
+
+    This matters because pandas' pd.read_sql(sql, conn, params=...) does
+    NOT go through DbConnection.execute(): it calls conn.cursor() and then
+    .execute() directly on the raw cursor, bypassing any translation logic
+    that only lived in DbConnection.execute(). Since DbConnection.cursor()
+    is what pandas actually calls, putting the adaptation here instead
+    catches every caller uniformly."""
+
+    def __init__(self, cursor, owner: "DbConnection"):
+        self._cursor = cursor
+        self._owner = owner
+
+    def execute(self, sql, params=None):
+        sql = self._owner._adapt_sql(sql)
+        try:
+            if params is None:
+                return self._cursor.execute(sql)
+            return self._cursor.execute(sql, params)
+        except Exception:
+            # `conn` is one shared, module-level connection for the whole
+            # app process (not per-request) — psycopg2 puts a connection
+            # into an "aborted transaction" state after any failed query,
+            # where every subsequent command fails too, until a rollback.
+            # Roll back here so one bad query can't take down every other
+            # page/user for the rest of the process's life.
+            self._owner.conn.rollback()
+            raise
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+    def __iter__(self):
+        return iter(self._cursor)
+
+
 class DbConnection:
     """Small compatibility wrapper that lets the app use either SQLite or Postgres."""
 
@@ -36,20 +75,7 @@ class DbConnection:
     def execute(self, sql, params=()):
         if self.backend == "sqlite":
             return self.conn.execute(sql, params)
-        sql = self._adapt_sql(sql)
-        cursor = self.conn.cursor()
-        try:
-            cursor.execute(sql, params)
-        except Exception:
-            # `conn` is one shared, module-level connection for the whole
-            # app process (not per-request) — psycopg2 puts a connection
-            # into an "aborted transaction" state after any failed query,
-            # where every subsequent command fails too, until a rollback.
-            # Roll back here so one bad query can't take down every other
-            # page/user for the rest of the process's life.
-            self.conn.rollback()
-            raise
-        return cursor
+        return self.cursor().execute(sql, params)
 
     def commit(self):
         self.conn.commit()
@@ -61,7 +87,10 @@ class DbConnection:
         self.conn.close()
 
     def cursor(self):
-        return self.conn.cursor()
+        real_cursor = self.conn.cursor()
+        if self.backend == "postgres":
+            return _AdaptingCursor(real_cursor, self)
+        return real_cursor
 
     def __getattr__(self, name):
         return getattr(self.conn, name)
