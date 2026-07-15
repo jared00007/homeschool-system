@@ -1,6 +1,10 @@
 #!/bin/bash
 # Launcher for the Homeschool Tracker app.
-# Double-click this file to start the tracker in your browser.
+# Double-click this file to start the tracker. It runs entirely on this
+# Mac (data stays in a local SQLite file, nothing goes to the internet)
+# and is also reachable from other devices on the same home network —
+# e.g. Landon's laptop or phone, over WiFi — using the network address
+# printed below once the server starts.
 
 cd ~/Desktop/homeschool-system/tracker || {
   echo "Could not find ~/Desktop/homeschool-system/tracker"
@@ -10,8 +14,6 @@ cd ~/Desktop/homeschool-system/tracker || {
 }
 
 # Create the virtual environment on first run if it doesn't exist yet
-# (dependencies come from the repo-root requirements.txt — the single
-# source of truth used both locally and by the cloud deployment)
 if [ ! -d "venv" ]; then
   echo "First-time setup: creating environment and installing dependencies..."
   python3 -m venv venv
@@ -21,4 +23,26 @@ else
   source venv/bin/activate
 fi
 
-streamlit run app.py
+LAN_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)
+
+echo ""
+echo "======================================================================"
+echo "  Starting the Homeschool Tracker..."
+echo ""
+echo "  On this Mac, it will open at:      http://localhost:8501"
+if [ -n "$LAN_IP" ]; then
+  echo "  From another device on the same"
+  echo "  WiFi network (e.g. Landon's       http://$LAN_IP:8501"
+  echo "  laptop or phone), open:"
+else
+  echo "  Could not detect this Mac's network address automatically."
+  echo "  Find it under System Settings > WiFi > Details > IP Address,"
+  echo "  then open http://<that address>:8501 on the other device."
+fi
+echo ""
+echo "  The first time another device connects, macOS may ask whether"
+echo "  to allow incoming network connections — click Allow."
+echo "======================================================================"
+echo ""
+
+streamlit run app.py --server.address 0.0.0.0
