@@ -18,9 +18,17 @@ class DbConnection:
         self.backend = backend
         self.conn = connection
 
+    def _adapt_sql(self, sql: str) -> str:
+        if self.backend != "postgres" or not isinstance(sql, str):
+            return sql
+        adapted = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "BIGSERIAL PRIMARY KEY")
+        adapted = adapted.replace("AUTOINCREMENT", "")
+        return adapted
+
     def execute(self, sql, params=()):
         if self.backend == "sqlite":
             return self.conn.execute(sql, params)
+        sql = self._adapt_sql(sql)
         cursor = self.conn.cursor()
         cursor.execute(sql, params)
         return cursor
@@ -49,41 +57,47 @@ def _get_db_backend() -> str:
 
 
 def _get_connection_string() -> Optional[str]:
-    # Check environment variables first
+    # Check environment variables first, then Streamlit secrets.
     val = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL")
-    if val:
-        return val
 
-    # If running inside Streamlit, secrets are available via streamlit.secrets
     try:
         import streamlit as st
 
-        # st.secrets behaves like a dict
-        val = st.secrets.get("DATABASE_URL") or st.secrets.get("SUPABASE_DB_URL")
-        if val:
-            return val
+        secret_val = st.secrets.get("DATABASE_URL") or st.secrets.get("SUPABASE_DB_URL")
+        if secret_val:
+            val = secret_val
     except Exception:
         # Not running under Streamlit or secrets not available
         pass
 
-    # If found, ensure any special characters in username/password are percent-encoded
-    if val and (val.startswith("postgresql://") or val.startswith("postgres://")):
-        try:
-            parsed = urllib.parse.urlparse(val)
-            if parsed.username:
-                user = urllib.parse.quote(parsed.username, safe='')
-                pwd = urllib.parse.quote(parsed.password or '', safe='')
-                host = parsed.hostname or ''
-                port = f":{parsed.port}" if parsed.port else ''
-                # Rebuild netloc with encoded credentials
-                netloc = f"{user}:{pwd}@{host}{port}"
-                rebuilt = urllib.parse.urlunparse((parsed.scheme, netloc, parsed.path or '', parsed.params or '', parsed.query or '', parsed.fragment or ''))
-                return rebuilt
-        except Exception:
-            # If parsing fails, return the raw value and let psycopg2 raise a useful error
-            return val
-
     return val
+
+
+def _build_postgres_params(conn_str: str) -> dict:
+    parsed = urllib.parse.urlparse(conn_str)
+    params = {}
+
+    if parsed.username:
+        params["user"] = urllib.parse.unquote(parsed.username)
+    if parsed.password is not None:
+        params["password"] = urllib.parse.unquote(parsed.password)
+    if parsed.hostname:
+        params["host"] = parsed.hostname
+    if parsed.port:
+        params["port"] = parsed.port
+
+    dbname = (parsed.path or "").lstrip("/")
+    if dbname:
+        params["dbname"] = dbname
+
+    query = urllib.parse.parse_qs(parsed.query)
+    for key, values in query.items():
+        params[key] = values[0]
+
+    if "sslmode" not in params:
+        params["sslmode"] = "require"
+
+    return params
 
 
 def _connect_sqlite(db_path: Path) -> DbConnection:
@@ -105,40 +119,7 @@ def connect_database(db_path: Path) -> DbConnection:
             raise RuntimeError("DATABASE_URL not set for postgres backend")
 
         try:
-            # Parse the connection string manually so passwords containing
-            # special characters like @ and % are handled correctly.
-            scheme, rest = conn_str.split("://", 1)
-            if scheme not in ("postgresql", "postgres"):
-                raise ValueError("Unsupported database scheme")
-
-            if "@" not in rest:
-                raise ValueError("Missing authentication information in DATABASE_URL")
-
-            creds, hostpath = rest.rsplit("@", 1)
-            if ":" not in creds:
-                raise ValueError("DATABASE_URL must include username and password")
-
-            username, password = creds.split(":", 1)
-            params = {
-                'user': urllib.parse.unquote(username),
-                'password': urllib.parse.unquote(password),
-            }
-
-            host_url = urllib.parse.urlparse(f"{scheme}://{hostpath}")
-            if host_url.hostname:
-                params['host'] = host_url.hostname
-            if host_url.port:
-                params['port'] = host_url.port
-
-            dbname = (host_url.path or '').lstrip('/')
-            if dbname:
-                params['dbname'] = dbname
-            query = urllib.parse.parse_qs(host_url.query)
-            for k, v in query.items():
-                params[k] = v[0]
-
-            if 'sslmode' not in params:
-                params['sslmode'] = 'require'
+            params = _build_postgres_params(conn_str)
 
             try:
                 if params.get('host'):
