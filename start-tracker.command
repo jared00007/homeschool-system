@@ -10,11 +10,13 @@ cd ~/Desktop/homeschool-system/tracker || {
 }
 
 # Create the virtual environment on first run if it doesn't exist yet
+# (dependencies come from the repo-root requirements.txt — the single
+# source of truth used both locally and by the cloud deployment)
 if [ ! -d "venv" ]; then
   echo "First-time setup: creating environment and installing dependencies..."
   python3 -m venv venv
   source venv/bin/activate
-  pip install -r requirements.txt
+  pip install -r ../requirements.txt
 else
   source venv/bin/activate
 fi
