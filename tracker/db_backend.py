@@ -86,6 +86,13 @@ def _get_connection_string() -> Optional[str]:
     return val
 
 
+def _connect_sqlite(db_path: Path) -> DbConnection:
+    db_path = Path(db_path or "/tmp/homeschool.db")
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    return DbConnection("sqlite", conn)
+
+
 def connect_database(db_path: Path) -> DbConnection:
     backend = _get_db_backend()
     if backend == "postgres":
@@ -133,11 +140,10 @@ def connect_database(db_path: Path) -> DbConnection:
             conn.autocommit = False
             return DbConnection("postgres", conn)
         except Exception as exc:
-            # Re-raise with the original exception so Streamlit logs show the detail
-            raise
+            print(f"Postgres connection failed; falling back to SQLite at {db_path}: {exc}")
+            return _connect_sqlite(db_path)
 
-    conn = sqlite3.connect(db_path, check_same_thread=False)
-    return DbConnection("sqlite", conn)
+    return _connect_sqlite(db_path)
 
 
 def table_columns(conn: DbConnection, table_name: str) -> list:
