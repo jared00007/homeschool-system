@@ -130,7 +130,7 @@ class DbConnection:
         conn_str = _get_connection_string()
         params = _build_postgres_params(conn_str)
         new_conn = psycopg2.connect(**params)
-        new_conn.autocommit = False
+        new_conn.autocommit = True
         try:
             self.conn.close()
         except Exception:
@@ -282,7 +282,21 @@ def connect_database(db_path: Path) -> DbConnection:
             "this app."
         ) from exc
 
-    conn.autocommit = False
+    # autocommit=True is required here, not a style choice: this app holds
+    # one connection open for its entire process lifetime and calls
+    # .commit() explicitly after writes, but never after reads. With
+    # autocommit=False, every SELECT silently opens a transaction that
+    # never gets closed — confirmed live via pg_stat_activity: the app's
+    # own connection sitting "idle in transaction" for minutes on a plain
+    # read. Supabase's transaction-mode pooler needs transactions to close
+    # promptly to return the underlying backend connection to the pool;
+    # an app that never commits reads pins one permanently, which is what
+    # was actually exhausting the pool and causing every hang tonight —
+    # not connection staleness, not concurrency. autocommit=True makes
+    # every statement (read or write) commit itself immediately, which
+    # doesn't change write behavior at all (every write already calls
+    # .commit() explicitly right after itself) and fixes reads.
+    conn.autocommit = True
     print(f"Connected to Postgres at {params.get('host')}:{params.get('port')}")
     return DbConnection("postgres", conn)
 
