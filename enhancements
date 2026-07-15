@@ -1,0 +1,17 @@
+------enhancements / feedback------
+
+---ideas---
+parent assigned main project? something fun?
+can we include some social situational awareness for sutdent who struggles with some basics
+---adds---
+
+---removal---
+
+---work done---
+was todays lesson hard? just y/n option with potential for text input maybe? -> added Y/N radio + optional notes to the daily Health Check-in on the Today tab, shown to parent in the Dashboard weekly summary.
+upload photo from place. state & or national park & or city of state usetag to show if pic for nps, state, city. could be one could be all but tag it -> merged into the new Travel Journal (see below) — each entry supports an optional photo plus independent state/park/city tags.
+ability to submit dead or broken links as student for parent to see and fix -> student "My Logins" tab has a "Report a broken link" form + status list; parent Accounts tab has a review section (mark fixed/dismiss/delete with an optional note).
+state, park, city dynamic in sense that if you enter on that encompeses another then it auto populates the other and then removes it from potential entry. so if rainier np entered as np then state WA would be added and removed from drop down of potential entries. dont use this logic for cities. cities are meant to be visited and flagged at standalone visit or drive through potential - make sense? -> Travel Log's State Visit picker now excludes states already covered by a logged park or city visit (derived via get_all_visited_states), with a caption listing which ones. Cities were deliberately left untouched, as requested.
+can we find pdf homework sheets for student to write and complete not in digital format. or upload photo to grade and enter? -> Grading tab: "Free printable worksheets" resource list (Math-Drills, CommonCoreSheets, HomeschoolMath, EnglishLinx, K12Reader, ReadWorks — all verified live/free/no-signup) plus an optional photo upload on "Record a grade" for handwritten work, viewable in a "Photos of graded work" expander.
+lets build travel journal into curriculum. to capute historical travels and data entry by student. small uploads -> new Travel Journal section under Travel Log: title/date/content entries with optional photo and independent state/park/city tags.
+can i use api to call sites like https://www.khanacademy.org/ for completiotn and quiz/test scores? -> researched: Khan Academy has no public API as of 2026 (their public API program was discontinued; only internal/unsupported endpoints remain, no documented third-party auth path). Not feasible to auto-pull scores — logins stay in the Accounts tab for now.

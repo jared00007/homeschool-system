@@ -26,7 +26,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from db_backend import connect_database, table_columns, table_exists
+from tracker.db_backend import connect_database, table_columns, table_exists
 
 DB_PATH = Path(__file__).parent / "homeschool.db"
 UPLOADS_BASE = Path(__file__).parent / "uploads"
