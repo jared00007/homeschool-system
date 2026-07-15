@@ -3,6 +3,7 @@ import sqlite3
 from pathlib import Path
 from typing import Optional, Tuple
 import urllib.parse
+import socket
 
 try:
     import psycopg2
@@ -116,11 +117,23 @@ def connect_database(db_path: Path) -> DbConnection:
                 # take first value
                 params[k] = v[0]
 
+            # Ensure SSL is required by default for cloud Postgres hosts
+            if 'sslmode' not in params:
+                params['sslmode'] = 'require'
+
+            # Diagnostic: attempt to resolve the host and print outcome to logs
+            try:
+                if params.get('host'):
+                    addrs = socket.getaddrinfo(params['host'], params.get('port') or 5432)
+                    print(f"DNS resolution for {params['host']}: {addrs[:3]}")
+            except Exception as dns_exc:
+                print(f"DNS resolution failed for {params.get('host')}: {dns_exc}")
+
             conn = psycopg2.connect(**params)
             conn.autocommit = False
             return DbConnection("postgres", conn)
-        except Exception:
-            # Re-raise to let caller see the original psycopg2 error in logs
+        except Exception as exc:
+            # Re-raise with the original exception so Streamlit logs show the detail
             raise
 
     conn = sqlite3.connect(db_path, check_same_thread=False)
