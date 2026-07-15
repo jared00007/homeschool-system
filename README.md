@@ -2,7 +2,9 @@
 
 One app for everything: your son's daily schedule with links,
 hour logging with parent approval, grading, and WA compliance tracking.
-It now supports a simple cloud-backed deployment while still working locally.
+Runs entirely on your own Mac — no cloud hosting, no monthly cost,
+nothing internet-facing — and is reachable from other devices (Landon's
+laptop or phone) over your home WiFi network.
 
 ## Folder structure
 
@@ -10,23 +12,46 @@ It now supports a simple cloud-backed deployment while still working locally.
 homeschool-system/
 ├── README.md
 ├── start-tracker.command       ← double-click to launch (handles setup too)
+├── requirements.txt
 ├── tracker/
 │   ├── app.py                  ← the entire app
-│   └── requirements.txt
+│   ├── db_backend.py           ← database connection handling
+│   └── homeschool.db           ← all your data lives here (created on first run)
 ├── curriculum/
 │   └── 8th-grade-curriculum-map.md   ← reference copy of the yearly plan
-└── resources/
-    └── links.md                ← curriculum + WA legal links reference
+├── resources/
+│   └── links.md                ← curriculum + WA legal links reference
+├── cloud-archive/               ← an earlier cloud-hosted (Streamlit Cloud
+│                                   + Supabase) version, not currently used —
+│                                   see cloud-archive/README.md
+└── archive/                     ← old misc files, not part of the app
 ```
 
 ## Launch
 
 Double-click `start-tracker.command`. First run installs dependencies
-automatically (takes a minute or two), then the app opens in your browser
-at localhost:8501. Every run after that is instant.
+automatically (takes a minute or two), then prints two web addresses:
+one for this Mac (`localhost:8501`), and one for other devices on the
+same WiFi network to use instead — see "Sharing with Landon's device"
+below.
 
 (If macOS blocks it: System Settings → Privacy & Security → "Open Anyway",
 or run `xattr -d com.apple.quarantine start-tracker.command` in Terminal.)
+
+## Sharing with Landon's device
+
+The terminal window that opens shows a line like:
+
+```
+From another device on the same WiFi network, open:  http://192.168.x.x:8501
+```
+
+Type that address into a browser on his laptop or phone — as long as it's
+on the same home WiFi, he'll see the live app and the same data you do.
+The first time a new device connects, macOS may ask whether to allow
+incoming network connections — click **Allow**. This Mac needs to stay
+on and `start-tracker.command` needs to still be running for his device
+to reach it.
 
 ## How it works
 
@@ -77,24 +102,6 @@ CURRICULUM_RESOURCES, PLANNED_HOURS). Edit and relaunch.
 Everything — hours, grades, assessments, the password — lives in
 `tracker/homeschool.db` (created on first run). Copy that one file to
 back the whole system up.
-
-## Cloud setup checklist
-
-For a true cloud-backed deployment, use this order:
-
-1. Create a managed Postgres database (Supabase, Neon, or similar).
-2. Copy the Postgres connection string.
-3. In Streamlit Cloud, add a secret named `DATABASE_URL` with the full connection string.
-4. Redeploy the app.
-5. Verify that the app opens and stores data in the cloud database.
-
-Example secret value:
-
-```toml
-DATABASE_URL = "postgresql://user:password@host:5432/dbname"
-```
-
-If the secret is missing or the connection fails, the app will still start with a local fallback store so you can test the UI.
 
 ## A note on the password
 
