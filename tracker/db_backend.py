@@ -4,78 +4,87 @@ import threading
 from pathlib import Path
 from typing import Optional
 import urllib.parse
-import socket
 
 try:
     import psycopg2
 except Exception:  # pragma: no cover - optional dependency
     psycopg2 = None
 
+try:
+    from sqlalchemy import create_engine
+except Exception:  # pragma: no cover - optional dependency
+    create_engine = None
 
-class _AdaptingCursor:
-    """Wraps a real Postgres cursor so the ?-to-%s translation and the
-    rollback-on-error safety net apply no matter how the cursor's
-    .execute() gets called — including by code we don't control.
 
-    This matters because pandas' pd.read_sql(sql, conn, params=...) does
-    NOT go through DbConnection.execute(): it calls conn.cursor() and then
-    .execute() directly on the raw cursor, bypassing any translation logic
-    that only lived in DbConnection.execute(). Since DbConnection.cursor()
-    is what pandas actually calls, putting the adaptation here instead
-    catches every caller uniformly."""
+def _adapt_sql(sql: str) -> str:
+    """Translate this app's SQLite-flavored SQL (written once, throughout
+    tracker/app.py, using "?" placeholders) to Postgres syntax."""
+    if not isinstance(sql, str):
+        return sql
+    adapted = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "BIGSERIAL PRIMARY KEY")
+    adapted = adapted.replace("AUTOINCREMENT", "")
+    # psycopg2 requires "%s", not "?". Escape any literal "%" first (e.g.
+    # in a LIKE pattern) so it isn't misread as a new placeholder, then
+    # swap every "?" for "%s". (Verified no query in this app has a
+    # literal "?" character outside of a placeholder position, and none
+    # use LIKE/"%" wildcards — safe as a blind two-pass replace.)
+    adapted = adapted.replace("%", "%%")
+    adapted = adapted.replace("?", "%s")
+    return adapted
 
-    def __init__(self, cursor, owner: "DbConnection"):
-        self._cursor = cursor
-        self._owner = owner
 
-    def _raw_execute(self, sql, params):
-        if params is None:
-            self._cursor.execute(sql)
-        else:
-            self._cursor.execute(sql, params)
+class _PooledCursor:
+    """A cursor-shaped object that checks out a fresh connection from the
+    SQLAlchemy pool only when .execute() actually runs, and returns it to
+    the pool immediately afterward — never holds one open and idle.
+
+    This is the fix for everything that went wrong tonight holding one
+    psycopg2 connection open for the app's entire process lifetime:
+    - pool_pre_ping validates the connection is actually alive before
+      handing it out, transparently reconnecting if Supabase's pooler
+      closed it server-side while idle (previously: a silent hang).
+    - The pool itself is thread-safe by design — concurrent script
+      reruns each get their own checked-out connection (previously: a
+      hand-rolled lock, easy to get wrong).
+    - Nothing is held open between calls, so nothing can accumulate an
+      open transaction across a long-idle period (previously: the actual
+      root cause — autocommit=False plus a connection kept for the
+      process's whole life meant every read left a transaction open,
+      which pinned a backend connection and exhausted Supabase's pool).
+
+    Matches both calling conventions used in this codebase: chained
+    (`conn.execute(sql, params).fetchall()`) and pandas' own
+    (`conn.cursor()` now, `.execute(...)` later, `.description`/
+    `.fetchall()` after that) — the checkout only happens inside
+    execute(), so both work identically.
+    """
+
+    def __init__(self, engine):
+        self._engine = engine
+        self._cursor = None
 
     def execute(self, sql, params=None):
-        sql = self._owner._adapt_sql(sql)
-        # `conn` is one shared, module-level connection for the whole app
-        # process, not one per request — Streamlit can run more than one
-        # session's script rerun concurrently in the same process, and
-        # psycopg2 connections are not safe for two threads to issue
-        # commands on at once. Without serializing here, two concurrent
-        # queries on the same connection can block forever with no
-        # exception raised at all — a silent hang, not a crash (this is
-        # exactly what "page goes blank, nothing in the logs" looks like).
-        with self._owner._lock:
-            try:
-                self._raw_execute(sql, params)
-            except (psycopg2.OperationalError, psycopg2.InterfaceError):
-                # The connection itself has gone bad — most likely
-                # Supabase's pooler silently closed it server-side after
-                # sitting idle (a long-lived process reusing one
-                # connection can easily outlast a pooler's idle timeout).
-                # A dead socket doesn't fail fast: the next query can hang
-                # indefinitely waiting for a response that will never
-                # arrive, which is exactly "page goes blank, nothing in
-                # the logs" — no exception ever gets the chance to be
-                # raised or printed. Reconnect once and retry rather than
-                # requiring a manual app restart every time this happens.
-                self._owner._reconnect()
-                self._cursor = self._owner.conn.cursor()
-                self._raw_execute(sql, params)
-            except Exception:
-                # psycopg2 puts a connection into an "aborted transaction"
-                # state after any failed query, where every subsequent
-                # command fails too, until a rollback. Roll back here so
-                # one bad query can't take down every other page/user for
-                # the rest of the process's life.
-                self._owner.conn.rollback()
-                raise
-        # psycopg2's cursor.execute() returns None (per DBAPI2 spec);
-        # sqlite3's returns the cursor itself, which the whole app relies
-        # on for chaining (conn.execute(...).fetchall()). Return self here
-        # so both backends behave the same way to callers. Reading results
-        # afterward (.fetchall()/.fetchone()) is safe outside the lock —
-        # psycopg2's default cursor buffers the full result client-side
-        # during execute(), so fetching doesn't touch the network again.
+        sql = _adapt_sql(sql)
+        conn = self._engine.raw_connection()
+        try:
+            cur = conn.cursor()
+            if params:
+                cur.execute(sql, params)
+            else:
+                cur.execute(sql)
+        except Exception:
+            conn.rollback()
+            conn.close()
+            raise
+        else:
+            # The DBAPI cursor buffers its full result set client-side
+            # during execute() (true for both psycopg2's default cursor
+            # and sqlite3) — closing/returning the connection now is safe;
+            # .fetchall()/.fetchone() afterward just reads that buffer,
+            # no further network round-trip. The engine runs in autocommit
+            # mode (set at creation), so writes are already durable too.
+            self._cursor = cur
+            conn.close()  # returns the connection to the pool
         return self
 
     def __getattr__(self, name):
@@ -86,73 +95,57 @@ class _AdaptingCursor:
 
 
 class DbConnection:
-    """Small compatibility wrapper that lets the app use either SQLite or Postgres.
+    """Compatibility wrapper so tracker/app.py's existing code — "?"
+    placeholders, conn.execute(...).fetchall() chaining, conn.commit()
+    after writes — works completely unchanged, while the actual
+    connection handling underneath differs by backend:
 
-    `conn` (the module-level instance of this class in tracker/app.py) is
-    shared across the whole app process — one connection object, every
-    session, every concurrent script rerun. Neither sqlite3 (in
-    check_same_thread=False mode) nor psycopg2 guarantee that's safe for
-    two threads to issue commands on at the same time — psycopg2
-    especially can just hang forever with no exception. `self._lock`
-    serializes every actual query so that risk doesn't exist regardless of
-    backend."""
+    - SQLite: one plain sqlite3.Connection held for the process's life.
+      This has never been the source of any problem — it's a local file,
+      no pooling/staleness concerns — so it's untouched.
+    - Postgres: a SQLAlchemy engine with a real connection pool
+      (pool_pre_ping validates liveness before every checkout). No
+      connection is held between calls; see _PooledCursor.
+    """
 
     def __init__(self, backend: str, connection):
         self.backend = backend
-        self.conn = connection
+        self.conn = connection  # sqlite3.Connection, or a SQLAlchemy Engine for postgres
         self._lock = threading.Lock()
-
-    def _adapt_sql(self, sql: str) -> str:
-        if self.backend != "postgres" or not isinstance(sql, str):
-            return sql
-        adapted = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "BIGSERIAL PRIMARY KEY")
-        adapted = adapted.replace("AUTOINCREMENT", "")
-        # The whole app is written against SQLite's "?" placeholder style;
-        # psycopg2 requires "%s". Escape any literal "%" first (e.g. in a
-        # LIKE pattern) so it isn't misread as a new placeholder, then swap
-        # every "?" for "%s". (Verified no query in this app has a literal
-        # "?" character outside of a placeholder position, and none use
-        # LIKE/"%" wildcards — safe to do this as a blind two-pass replace.)
-        adapted = adapted.replace("%", "%%")
-        adapted = adapted.replace("?", "%s")
-        return adapted
 
     def execute(self, sql, params=()):
         if self.backend == "sqlite":
             with self._lock:
                 return self.conn.execute(sql, params)
-        return self.cursor().execute(sql, params)
-
-    def _reconnect(self):
-        """Re-establish the underlying Postgres connection — used when the
-        pooled connection has gone stale (closed server-side while idle)
-        and the next query would otherwise hang against a dead socket."""
-        conn_str = _get_connection_string()
-        params = _build_postgres_params(conn_str)
-        new_conn = psycopg2.connect(**params)
-        new_conn.autocommit = True
-        try:
-            self.conn.close()
-        except Exception:
-            pass  # the old connection is already broken; closing it is best-effort
-        self.conn = new_conn
+        return _PooledCursor(self.conn).execute(sql, params)
 
     def commit(self):
-        with self._lock:
-            self.conn.commit()
+        if self.backend == "sqlite":
+            with self._lock:
+                self.conn.commit()
+        # Postgres path: each _PooledCursor.execute() call already runs
+        # against an autocommit connection and returns it to the pool
+        # immediately — there is no "current" connection left to commit
+        # by the time app.py calls this separately. Safe no-op.
 
     def rollback(self):
-        with self._lock:
-            self.conn.rollback()
+        if self.backend == "sqlite":
+            with self._lock:
+                self.conn.rollback()
+        # Postgres: see commit() — nothing to roll back after the fact;
+        # _PooledCursor.execute() already rolls back its own connection
+        # immediately on failure, before returning it to the pool.
 
     def close(self):
-        self.conn.close()
+        if self.backend == "sqlite":
+            self.conn.close()
+        else:
+            self.conn.dispose()  # closes every pooled connection
 
     def cursor(self):
-        real_cursor = self.conn.cursor()
-        if self.backend == "postgres":
-            return _AdaptingCursor(real_cursor, self)
-        return real_cursor
+        if self.backend == "sqlite":
+            return self.conn.cursor()
+        return _PooledCursor(self.conn)
 
     def __getattr__(self, name):
         return getattr(self.conn, name)
@@ -199,29 +192,6 @@ def _build_postgres_params(conn_str: str) -> dict:
     if "sslmode" not in params:
         params["sslmode"] = "require"
 
-    # This app holds one connection open for the entire life of the
-    # process (not one per request), which can easily outlast a pooler's
-    # idle-connection timeout — Supabase's pgbouncer can silently close a
-    # connection server-side after it sits idle. Without these, the next
-    # query on that now-dead socket doesn't fail fast: it can hang
-    # indefinitely waiting for a response that will never come, with
-    # nothing to log because nothing has actually failed yet. TCP
-    # keepalives let the OS detect that within ~40s of idling instead of
-    # never; connect_timeout bounds how long establishing a *new*
-    # connection can take.
-    #
-    # Deliberately NOT setting statement_timeout via the "options" startup
-    # parameter here: that's a session-level GUC, and this connection goes
-    # through Supabase's *transaction-mode* pooler (port 6543) — those
-    # don't reliably support session-level SET/options the same way a
-    # direct connection does, and setting one broke the connection
-    # entirely. Not worth the risk for a nice-to-have safety net.
-    params.setdefault("connect_timeout", 10)
-    params.setdefault("keepalives", 1)
-    params.setdefault("keepalives_idle", 20)
-    params.setdefault("keepalives_interval", 5)
-    params.setdefault("keepalives_count", 4)
-
     return params
 
 
@@ -245,26 +215,51 @@ def connect_database(db_path: Path) -> DbConnection:
             "DATABASE_URL is set but psycopg2 is not installed — install it "
             "from requirements.txt (psycopg2-binary)."
         )
+    if create_engine is None:
+        raise RuntimeError(
+            "DATABASE_URL is set but sqlalchemy is not installed — install "
+            "it from requirements.txt (sqlalchemy)."
+        )
 
     params = _build_postgres_params(conn_str)
+    url = (
+        f"postgresql+psycopg2://{urllib.parse.quote(params.get('user', ''))}:"
+        f"{urllib.parse.quote(params.get('password', ''))}@"
+        f"{params.get('host')}:{params.get('port', 5432)}/{params.get('dbname', 'postgres')}"
+    )
+
+    connect_args = {
+        "sslmode": params.get("sslmode", "require"),
+        "connect_timeout": 10,
+        # This app used to hold one connection open for its entire
+        # process lifetime; a long-idle connection can outlast Supabase's
+        # pooler idle timeout, and TCP keepalives let a genuinely dead
+        # socket get noticed within ~40s rather than never. Kept as a
+        # second layer of defense even though the pool itself (below) no
+        # longer holds any one connection open between calls.
+        "keepalives": 1,
+        "keepalives_idle": 20,
+        "keepalives_interval": 5,
+        "keepalives_count": 4,
+    }
 
     try:
-        if params.get("host"):
-            addrs = socket.getaddrinfo(params["host"], params.get("port") or 5432)
-            print(f"DNS resolution for {params['host']}: {addrs[:3]}")
-    except Exception as dns_exc:
-        print(f"DNS resolution failed for {params.get('host')}: {dns_exc}")
-
-    try:
-        conn = psycopg2.connect(**params)
+        engine = create_engine(
+            url,
+            connect_args=connect_args,
+            pool_pre_ping=True,   # validate a connection is alive before handing it out; reconnect if not
+            pool_size=3,          # this is one low-traffic family app, not a high-concurrency service
+            max_overflow=2,
+            pool_recycle=280,     # proactively recycle before any pooler-side idle timeout, belt-and-suspenders with pre-ping
+            isolation_level="AUTOCOMMIT",
+        )
+        # Fail fast here if the connection is genuinely bad (wrong host,
+        # bad password, pooler unreachable) rather than deferring the
+        # first real error to whatever page happens to run the first
+        # query.
+        test_conn = engine.raw_connection()
+        test_conn.close()
     except Exception as exc:
-        # A connection string WAS configured — a failure here is a real
-        # setup problem, not "no cloud DB configured." Raise loudly instead
-        # of silently substituting local SQLite: that fallback used to make
-        # the app look like it "just works" while quietly not using the
-        # configured database (and, on most hosts, against an empty/
-        # ephemeral local file) — exactly the failure mode that's hard to
-        # notice until data you expect to see just isn't there.
         raise RuntimeError(
             f"Could not connect to the configured Postgres database "
             f"(host={params.get('host')!r}, port={params.get('port')!r}, "
@@ -282,40 +277,18 @@ def connect_database(db_path: Path) -> DbConnection:
             "this app."
         ) from exc
 
-    # autocommit=True is required here, not a style choice: this app holds
-    # one connection open for its entire process lifetime and calls
-    # .commit() explicitly after writes, but never after reads. With
-    # autocommit=False, every SELECT silently opens a transaction that
-    # never gets closed — confirmed live via pg_stat_activity: the app's
-    # own connection sitting "idle in transaction" for minutes on a plain
-    # read. Supabase's transaction-mode pooler needs transactions to close
-    # promptly to return the underlying backend connection to the pool;
-    # an app that never commits reads pins one permanently, which is what
-    # was actually exhausting the pool and causing every hang tonight —
-    # not connection staleness, not concurrency. autocommit=True makes
-    # every statement (read or write) commit itself immediately, which
-    # doesn't change write behavior at all (every write already calls
-    # .commit() explicitly right after itself) and fixes reads.
-    conn.autocommit = True
-    print(f"Connected to Postgres at {params.get('host')}:{params.get('port')}")
-    return DbConnection("postgres", conn)
+    print(f"Connected to Postgres at {params.get('host')}:{params.get('port')} "
+          f"(pooled via SQLAlchemy, pool_pre_ping enabled)")
+    return DbConnection("postgres", engine)
 
 
 def table_columns(conn: DbConnection, table_name: str) -> list:
     if conn.backend == "sqlite":
         return [row[1] for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
 
-    # Note: "?" here, not "%s" — DbConnection.execute()'s _adapt_sql() step
-    # converts "?" to "%s" for the postgres backend. Writing "%s" directly
-    # in a caller would get double-escaped by that same step (it escapes
-    # literal "%" to "%%" before translating placeholders).
     cursor = conn.execute(
-        """
-        SELECT column_name
-        FROM information_schema.columns
-        WHERE table_name = ?
-        ORDER BY ordinal_position
-        """,
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_name = ? ORDER BY ordinal_position",
         (table_name,),
     )
     return [row[0] for row in cursor.fetchall()]
@@ -329,8 +302,5 @@ def table_exists(conn: DbConnection, table_name: str) -> bool:
         ).fetchone()
         return row is not None
 
-    cursor = conn.execute(
-        "SELECT to_regclass(?)",
-        (table_name,),
-    )
+    cursor = conn.execute("SELECT to_regclass(?)", (table_name,))
     return cursor.fetchone()[0] is not None

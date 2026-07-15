@@ -3493,8 +3493,7 @@ if not st.session_state.welcome_seen:
 # reflects what's really in use. This is more reliable than checking
 # hosting-platform logs, which can buffer/drop stdout from import time.
 if conn.backend == "postgres":
-    _pg_host = getattr(conn.conn, "info", None)
-    _pg_host = _pg_host.host if _pg_host else "?"
+    _pg_host = getattr(getattr(conn.conn, "url", None), "host", None) or "?"
     st.success(f"✅ Connected to the cloud Postgres database ({_pg_host}).")
 elif os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL"):
     st.warning("⚠️ DATABASE_URL/SUPABASE_DB_URL is set, but this session "
