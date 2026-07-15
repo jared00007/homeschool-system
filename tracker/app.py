@@ -1096,6 +1096,7 @@ RATING_SCALE = ["😞", "😕", "😐", "🙂", "😄"]  # index+1 = stored 1-5 
 def get_conn():
     local_db_path = Path(__file__).parent / "homeschool.db"
     conn = connect_database(DB_PATH) if DB_PATH is not None else connect_database(local_db_path)
+    print(f"Connected database backend: {conn.backend}")
     conn.execute("""CREATE TABLE IF NOT EXISTS students (
         id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
         grade TEXT, school_year TEXT)""")

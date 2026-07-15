@@ -95,6 +95,7 @@ def _connect_sqlite(db_path: Path) -> DbConnection:
 
 def connect_database(db_path: Path) -> DbConnection:
     backend = _get_db_backend()
+    print(f"Database backend selected: {backend}")
     if backend == "postgres":
         if psycopg2 is None:
             raise RuntimeError("psycopg2 is not installed. Install it from requirements.txt.")
