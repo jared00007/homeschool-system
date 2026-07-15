@@ -19,7 +19,9 @@ For local testing, set one of these:
 - SUPABASE_DB_URL
 
 For Streamlit Cloud, add the same value in app secrets as:
-- DATABASE_URL = "postgres://..."
+- DATABASE_URL = "postgresql://user:password@host:5432/dbname"
+
+For a proper cloud setup, use a managed Postgres service such as Supabase, Neon, or a similar provider. The app will use that connection automatically when the secret is present.
 
 If you want to keep the app working locally too, leave the local SQLite file in place and only set the cloud variable when you are ready to use the hosted database.
 

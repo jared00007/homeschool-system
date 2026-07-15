@@ -1299,6 +1299,22 @@ def setting_set(key, value):
     conn.commit()
 
 
+def get_contact_email():
+    return (setting_get("contact_email") or "").strip()
+
+
+def set_contact_email(email):
+    setting_set("contact_email", (email or "").strip())
+
+
+def welcome_seen():
+    return (setting_get("welcome_seen") or "0").lower() in {"1", "true", "yes"}
+
+
+def mark_welcome_seen():
+    setting_set("welcome_seen", "1")
+
+
 def hash_pw(password, salt):
     return hashlib.sha256((salt + password).encode()).hexdigest()
 
@@ -3439,6 +3455,33 @@ if "parent_authed" not in st.session_state:
     st.session_state.parent_authed = True  # TESTING: parent lock bypassed — set back to False when done
 
 students_df = get_students()
+
+if "welcome_seen" not in st.session_state:
+    st.session_state.welcome_seen = welcome_seen()
+
+if not st.session_state.welcome_seen:
+    with st.container(border=True):
+        st.success("Welcome to your homeschool tracker")
+        st.write("This cloud version is ready to use. You can add students, log hours, and track progress from the URL.")
+        st.caption("Optional: leave an email below if you want future updates or support contact.")
+        current_email = get_contact_email()
+        email_input = st.text_input("Email (optional)", value=current_email, key="welcome_email")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Save email", use_container_width=True):
+                set_contact_email(email_input)
+                mark_welcome_seen()
+                st.session_state.welcome_seen = True
+                st.rerun()
+        with col2:
+            if st.button("Skip for now", use_container_width=True):
+                mark_welcome_seen()
+                st.session_state.welcome_seen = True
+                st.rerun()
+    st.divider()
+
+if os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL"):
+    st.info("Cloud database is configured. If the connection is unavailable, this deployment will continue with an internal fallback store until it is fixed.")
 
 with st.sidebar:
     st.title("📚 Homeschool")
