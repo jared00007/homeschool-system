@@ -34,6 +34,7 @@ UPLOADS_BASE = Path(__file__).parent / "uploads"
 # Cloud deployment support: if DATABASE_URL or SUPABASE_DB_URL is present,
 # the app will use that instead of the local SQLite file.
 DB_BACKEND = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL")
+DB_PATH = Path(__file__).parent / "homeschool.db"
 if DB_BACKEND:
     DB_PATH = None
 
@@ -1094,8 +1095,7 @@ RATING_SCALE = ["😞", "😕", "😐", "🙂", "😄"]  # index+1 = stored 1-5 
 
 # ------------------------------------------------------------- database
 def get_conn():
-    local_db_path = Path(__file__).parent / "homeschool.db"
-    conn = connect_database(DB_PATH) if DB_PATH is not None else connect_database(local_db_path)
+    conn = connect_database(DB_PATH)
     print(f"Connected database backend: {conn.backend}")
     conn.execute("""CREATE TABLE IF NOT EXISTS students (
         id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
