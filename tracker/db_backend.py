@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Optional
 import urllib.parse
@@ -29,24 +30,35 @@ class _AdaptingCursor:
 
     def execute(self, sql, params=None):
         sql = self._owner._adapt_sql(sql)
-        try:
-            if params is None:
-                self._cursor.execute(sql)
-            else:
-                self._cursor.execute(sql, params)
-        except Exception:
-            # `conn` is one shared, module-level connection for the whole
-            # app process (not per-request) — psycopg2 puts a connection
-            # into an "aborted transaction" state after any failed query,
-            # where every subsequent command fails too, until a rollback.
-            # Roll back here so one bad query can't take down every other
-            # page/user for the rest of the process's life.
-            self._owner.conn.rollback()
-            raise
+        # `conn` is one shared, module-level connection for the whole app
+        # process, not one per request — Streamlit can run more than one
+        # session's script rerun concurrently in the same process, and
+        # psycopg2 connections are not safe for two threads to issue
+        # commands on at once. Without serializing here, two concurrent
+        # queries on the same connection can block forever with no
+        # exception raised at all — a silent hang, not a crash (this is
+        # exactly what "page goes blank, nothing in the logs" looks like).
+        with self._owner._lock:
+            try:
+                if params is None:
+                    self._cursor.execute(sql)
+                else:
+                    self._cursor.execute(sql, params)
+            except Exception:
+                # psycopg2 puts a connection into an "aborted transaction"
+                # state after any failed query, where every subsequent
+                # command fails too, until a rollback. Roll back here so
+                # one bad query can't take down every other page/user for
+                # the rest of the process's life.
+                self._owner.conn.rollback()
+                raise
         # psycopg2's cursor.execute() returns None (per DBAPI2 spec);
         # sqlite3's returns the cursor itself, which the whole app relies
         # on for chaining (conn.execute(...).fetchall()). Return self here
-        # so both backends behave the same way to callers.
+        # so both backends behave the same way to callers. Reading results
+        # afterward (.fetchall()/.fetchone()) is safe outside the lock —
+        # psycopg2's default cursor buffers the full result client-side
+        # during execute(), so fetching doesn't touch the network again.
         return self
 
     def __getattr__(self, name):
@@ -57,11 +69,21 @@ class _AdaptingCursor:
 
 
 class DbConnection:
-    """Small compatibility wrapper that lets the app use either SQLite or Postgres."""
+    """Small compatibility wrapper that lets the app use either SQLite or Postgres.
+
+    `conn` (the module-level instance of this class in tracker/app.py) is
+    shared across the whole app process — one connection object, every
+    session, every concurrent script rerun. Neither sqlite3 (in
+    check_same_thread=False mode) nor psycopg2 guarantee that's safe for
+    two threads to issue commands on at the same time — psycopg2
+    especially can just hang forever with no exception. `self._lock`
+    serializes every actual query so that risk doesn't exist regardless of
+    backend."""
 
     def __init__(self, backend: str, connection):
         self.backend = backend
         self.conn = connection
+        self._lock = threading.Lock()
 
     def _adapt_sql(self, sql: str) -> str:
         if self.backend != "postgres" or not isinstance(sql, str):
@@ -80,14 +102,17 @@ class DbConnection:
 
     def execute(self, sql, params=()):
         if self.backend == "sqlite":
-            return self.conn.execute(sql, params)
+            with self._lock:
+                return self.conn.execute(sql, params)
         return self.cursor().execute(sql, params)
 
     def commit(self):
-        self.conn.commit()
+        with self._lock:
+            self.conn.commit()
 
     def rollback(self):
-        self.conn.rollback()
+        with self._lock:
+            self.conn.rollback()
 
     def close(self):
         self.conn.close()
