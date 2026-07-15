@@ -26,7 +26,19 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from db_backend import connect_database, table_columns, table_exists
+# Two different launch paths import this module differently:
+# - Locally (start-tracker.command: `cd tracker/ && streamlit run app.py`)
+#   this file runs as the main script, so its own directory is on sys.path
+#   and "db_backend" (same-directory) is importable directly.
+# - On Streamlit Cloud, the repo-root app.py shim does
+#   `sys.path.insert(0, repo_root); from tracker.app import *`, which
+#   imports this file as the *submodule* tracker.app — its own directory is
+#   NOT auto-added to sys.path in that case, only the repo root is, so it
+#   needs the package-qualified "tracker.db_backend" instead.
+try:
+    from db_backend import connect_database, table_columns, table_exists
+except ImportError:
+    from tracker.db_backend import connect_database, table_columns, table_exists
 
 DB_PATH = Path(__file__).parent / "homeschool.db"
 UPLOADS_BASE = Path(__file__).parent / "uploads"
