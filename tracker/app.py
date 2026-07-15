@@ -3493,10 +3493,20 @@ if not st.session_state.welcome_seen:
                 st.rerun()
     st.divider()
 
-if os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL"):
-    st.info("Cloud database is configured. If the connection fails, the app "
-            "will show a connection error (with the host/port it tried) "
-            "instead of silently using a temporary local database.")
+# Show the *actual* connected backend, not just whether an env var is
+# present — a failed Postgres connection now raises instead of silently
+# falling back, so if we've reached this line at all, `conn.backend`
+# reflects what's really in use. This is more reliable than checking
+# hosting-platform logs, which can buffer/drop stdout from import time.
+if conn.backend == "postgres":
+    _pg_host = getattr(conn.conn, "info", None)
+    _pg_host = _pg_host.host if _pg_host else "?"
+    st.success(f"✅ Connected to the cloud Postgres database ({_pg_host}).")
+elif os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL"):
+    st.warning("⚠️ DATABASE_URL/SUPABASE_DB_URL is set, but this session "
+              "connected to local SQLite instead — that shouldn't happen "
+              "(a failed cloud connection should raise an error, not fall "
+              "back silently). Check the app logs for details.")
 
 with st.sidebar:
     st.title("📚 Homeschool")
