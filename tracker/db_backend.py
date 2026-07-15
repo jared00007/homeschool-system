@@ -31,8 +31,9 @@ class _AdaptingCursor:
         sql = self._owner._adapt_sql(sql)
         try:
             if params is None:
-                return self._cursor.execute(sql)
-            return self._cursor.execute(sql, params)
+                self._cursor.execute(sql)
+            else:
+                self._cursor.execute(sql, params)
         except Exception:
             # `conn` is one shared, module-level connection for the whole
             # app process (not per-request) — psycopg2 puts a connection
@@ -42,6 +43,11 @@ class _AdaptingCursor:
             # page/user for the rest of the process's life.
             self._owner.conn.rollback()
             raise
+        # psycopg2's cursor.execute() returns None (per DBAPI2 spec);
+        # sqlite3's returns the cursor itself, which the whole app relies
+        # on for chaining (conn.execute(...).fetchall()). Return self here
+        # so both backends behave the same way to callers.
+        return self
 
     def __getattr__(self, name):
         return getattr(self._cursor, name)
