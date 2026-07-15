@@ -78,6 +78,24 @@ Everything — hours, grades, assessments, the password — lives in
 `tracker/homeschool.db` (created on first run). Copy that one file to
 back the whole system up.
 
+## Cloud setup checklist
+
+For a true cloud-backed deployment, use this order:
+
+1. Create a managed Postgres database (Supabase, Neon, or similar).
+2. Copy the Postgres connection string.
+3. In Streamlit Cloud, add a secret named `DATABASE_URL` with the full connection string.
+4. Redeploy the app.
+5. Verify that the app opens and stores data in the cloud database.
+
+Example secret value:
+
+```toml
+DATABASE_URL = "postgresql://user:password@host:5432/dbname"
+```
+
+If the secret is missing or the connection fails, the app will still start with a local fallback store so you can test the UI.
+
 ## A note on the password
 
 This keeps honest kids honest — it stops your son from approving his own

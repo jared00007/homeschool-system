@@ -104,31 +104,41 @@ def connect_database(db_path: Path) -> DbConnection:
             raise RuntimeError("DATABASE_URL not set for postgres backend")
 
         try:
-            parsed = urllib.parse.urlparse(conn_str)
-            params = {}
-            if parsed.username:
-                params['user'] = urllib.parse.unquote(parsed.username)
-            if parsed.password:
-                params['password'] = urllib.parse.unquote(parsed.password)
-            if parsed.hostname:
-                params['host'] = parsed.hostname
-            if parsed.port:
-                params['port'] = parsed.port
-            # path is database name (leading slash)
-            dbname = (parsed.path or '').lstrip('/')
+            # Parse the connection string manually so passwords containing
+            # special characters like @ and % are handled correctly.
+            scheme, rest = conn_str.split("://", 1)
+            if scheme not in ("postgresql", "postgres"):
+                raise ValueError("Unsupported database scheme")
+
+            if "@" not in rest:
+                raise ValueError("Missing authentication information in DATABASE_URL")
+
+            creds, hostpath = rest.rsplit("@", 1)
+            if ":" not in creds:
+                raise ValueError("DATABASE_URL must include username and password")
+
+            username, password = creds.split(":", 1)
+            params = {
+                'user': urllib.parse.unquote(username),
+                'password': urllib.parse.unquote(password),
+            }
+
+            host_url = urllib.parse.urlparse(f"{scheme}://{hostpath}")
+            if host_url.hostname:
+                params['host'] = host_url.hostname
+            if host_url.port:
+                params['port'] = host_url.port
+
+            dbname = (host_url.path or '').lstrip('/')
             if dbname:
                 params['dbname'] = dbname
-            # include query params like sslmode
-            query = urllib.parse.parse_qs(parsed.query)
+            query = urllib.parse.parse_qs(host_url.query)
             for k, v in query.items():
-                # take first value
                 params[k] = v[0]
 
-            # Ensure SSL is required by default for cloud Postgres hosts
             if 'sslmode' not in params:
                 params['sslmode'] = 'require'
 
-            # Diagnostic: attempt to resolve the host and print outcome to logs
             try:
                 if params.get('host'):
                     addrs = socket.getaddrinfo(params['host'], params.get('port') or 5432)
