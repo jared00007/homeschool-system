@@ -2,6 +2,7 @@ import os
 import sqlite3
 from pathlib import Path
 from typing import Optional, Tuple
+import urllib.parse
 
 try:
     import psycopg2
@@ -40,14 +41,48 @@ class DbConnection:
 
 
 def _get_db_backend() -> str:
-    database_url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL")
-    if database_url:
+    # Prefer an explicit connection string from environment or Streamlit secrets
+    if _get_connection_string():
         return "postgres"
     return "sqlite"
 
 
 def _get_connection_string() -> Optional[str]:
-    return os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL")
+    # Check environment variables first
+    val = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL")
+    if val:
+        return val
+
+    # If running inside Streamlit, secrets are available via streamlit.secrets
+    try:
+        import streamlit as st
+
+        # st.secrets behaves like a dict
+        val = st.secrets.get("DATABASE_URL") or st.secrets.get("SUPABASE_DB_URL")
+        if val:
+            return val
+    except Exception:
+        # Not running under Streamlit or secrets not available
+        pass
+
+    # If found, ensure any special characters in username/password are percent-encoded
+    if val and (val.startswith("postgresql://") or val.startswith("postgres://")):
+        try:
+            parsed = urllib.parse.urlparse(val)
+            if parsed.username:
+                user = urllib.parse.quote(parsed.username, safe='')
+                pwd = urllib.parse.quote(parsed.password or '', safe='')
+                host = parsed.hostname or ''
+                port = f":{parsed.port}" if parsed.port else ''
+                # Rebuild netloc with encoded credentials
+                netloc = f"{user}:{pwd}@{host}{port}"
+                rebuilt = urllib.parse.urlunparse((parsed.scheme, netloc, parsed.path or '', parsed.params or '', parsed.query or '', parsed.fragment or ''))
+                return rebuilt
+        except Exception:
+            # If parsing fails, return the raw value and let psycopg2 raise a useful error
+            return val
+
+    return val
 
 
 def connect_database(db_path: Path) -> DbConnection:
@@ -55,9 +90,38 @@ def connect_database(db_path: Path) -> DbConnection:
     if backend == "postgres":
         if psycopg2 is None:
             raise RuntimeError("psycopg2 is not installed. Install it from requirements.txt.")
-        conn = psycopg2.connect(_get_connection_string())
-        conn.autocommit = False
-        return DbConnection("postgres", conn)
+        # Build connection parameters and pass as kwargs to psycopg2.connect
+        conn_str = _get_connection_string()
+        if not conn_str:
+            raise RuntimeError("DATABASE_URL not set for postgres backend")
+
+        try:
+            parsed = urllib.parse.urlparse(conn_str)
+            params = {}
+            if parsed.username:
+                params['user'] = urllib.parse.unquote(parsed.username)
+            if parsed.password:
+                params['password'] = urllib.parse.unquote(parsed.password)
+            if parsed.hostname:
+                params['host'] = parsed.hostname
+            if parsed.port:
+                params['port'] = parsed.port
+            # path is database name (leading slash)
+            dbname = (parsed.path or '').lstrip('/')
+            if dbname:
+                params['dbname'] = dbname
+            # include query params like sslmode
+            query = urllib.parse.parse_qs(parsed.query)
+            for k, v in query.items():
+                # take first value
+                params[k] = v[0]
+
+            conn = psycopg2.connect(**params)
+            conn.autocommit = False
+            return DbConnection("postgres", conn)
+        except Exception:
+            # Re-raise to let caller see the original psycopg2 error in logs
+            raise
 
     conn = sqlite3.connect(db_path, check_same_thread=False)
     return DbConnection("sqlite", conn)
