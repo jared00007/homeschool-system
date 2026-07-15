@@ -157,6 +157,16 @@ includes the host/port/dbname it tried and the real underlying error:
   enter valid TOML"* → you pasted the bare connection string without the
   `DATABASE_URL = "..."` wrapper.
 
+**App crashes with `SyntaxError: syntax error at or near "ORDER"` (or
+similar, pointing at a `pd.read_sql` call)** — this was a real bug, fixed
+in `tracker/db_backend.py`: `pandas.read_sql()` doesn't route through
+`DbConnection.execute()`, so an earlier version of the placeholder
+translation missed it entirely. If you see this after pulling the latest
+code, something regressed in `db_backend.py`'s `.cursor()` — check
+`DbConnection.cursor()` still returns an `_AdaptingCursor` for the
+Postgres backend (see `APP_KNOWLEDGE.md` §4 for why it has to live there
+and not just in `.execute()`).
+
 **Data doesn't show up even though it connects** — you likely haven't run
 the migration script yet (step 4) — a fresh Postgres database only has the
 seed/reference catalogs (national parks, elective pool, etc.), not your

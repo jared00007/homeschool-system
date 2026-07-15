@@ -135,7 +135,12 @@ local SQLite (`tracker/homeschool.db`). That's the entire decision tree.
 
 Wraps either a `sqlite3.Connection` or a `psycopg2` connection behind one
 interface: `.execute(sql, params)`, `.commit()`, `.rollback()`, `.close()`,
-`.cursor()`. For the Postgres backend, `.execute()`:
+`.cursor()`.
+
+**The adaptation logic lives in `.cursor()`, not `.execute()` — this is
+deliberate, not incidental, and matters if you touch this file.** For the
+Postgres backend, `.cursor()` returns an `_AdaptingCursor` wrapping the
+real psycopg2 cursor. Its `.execute()`:
 1. Runs the SQL through `_adapt_sql()`, which translates SQLite syntax to
    Postgres syntax:
    - `INTEGER PRIMARY KEY AUTOINCREMENT` → `BIGSERIAL PRIMARY KEY`
@@ -144,22 +149,37 @@ interface: `.execute(sql, params)`, `.commit()`, `.rollback()`, `.close()`,
 2. Wraps the actual `cursor.execute()` in a try/except that calls
    `self.conn.rollback()` before re-raising on any failure.
 
-That rollback matters more than it looks: `conn` is one shared,
-module-level connection for the whole app process (not per-request).
-Postgres puts a connection into an "aborted transaction" state after any
-failed query — every subsequent command on that connection fails too,
-until a rollback happens. Without this, one bad query (e.g. a constraint
-violation) could silently break the app for every user until the process
-restarted. This was found and fixed in a code-review pass, not something
-that showed up as an obvious bug — if you're touching `DbConnection.execute()`,
-keep this behavior.
+`DbConnection.execute(sql, params)` itself is now just `self.cursor().execute(sql,
+params)` — a thin convenience wrapper, not where the real logic lives.
+
+**Why it's structured this way**: `pandas.read_sql(sql, conn, params=...)`
+— used all over `tracker/app.py` for reads — does **not** call
+`DbConnection.execute()` at all. Pandas calls `conn.cursor()` to get a
+cursor object, then calls `.execute(sql, params)` directly on *that*,
+bypassing anything that only lived in `DbConnection.execute()`. This was a
+real shipped bug: the placeholder translation was originally only in
+`.execute()`, tested by calling `conn.execute()` directly (which worked),
+and 12 of the app's 20 `pd.read_sql(..., params=...)` calls broke in
+production anyway because pandas never goes through that method. **If you
+add another method that issues queries, make sure it goes through
+`.cursor()` (or delegates to something that does) — `.execute()` alone is
+not a reliable choke point** for catching every caller, pandas included.
+
+That rollback matters more than it looks, independent of the above:
+`conn` is one shared, module-level connection for the whole app process
+(not per-request). Postgres puts a connection into an "aborted
+transaction" state after any failed query — every subsequent command on
+that connection fails too, until a rollback happens. Without it, one bad
+query (e.g. a constraint violation) could silently break the app for
+every user until the process restarted.
 
 **Every query in the codebase must use `?` placeholders, never write `%s`
 directly** — even in `db_backend.py`'s own helper functions
 (`table_columns()`, `table_exists()`). Writing `%s` by hand gets
 double-escaped by the `%` → `%%` step above (confirmed as a real bug,
 caught before shipping). `?` is the one placeholder convention across the
-entire codebase; the translation to `%s` happens in exactly one place.
+entire codebase; the translation to `%s` happens in exactly one place
+(`_AdaptingCursor.execute()`, reached via `.cursor()`).
 
 ### Schema introspection
 

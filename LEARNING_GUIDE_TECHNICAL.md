@@ -194,6 +194,26 @@ virtual environment (~8,750 files, including compiled binaries) had been
 committed to git at some point. Untracked and gitignored; this alone cut
 the tracked repo from ~8,780 files to ~30.
 
+**12. `pandas.read_sql()` bypassed the placeholder translation entirely —
+found live, in production, after everything above shipped.** 12 of the
+app's 20 `pd.read_sql(sql, conn, params=...)` calls crashed with `syntax
+error at or near "ORDER"` — the `?` placeholder reaching psycopg2 completely
+untranslated. Root cause: `pd.read_sql` does **not** call
+`DbConnection.execute()`. Internally it calls `conn.cursor()` to get a
+cursor, then calls `.execute(sql, params)` directly on *that* — bypassing
+whatever translation logic only lived in `DbConnection.execute()`. Every
+earlier test of the placeholder translation (item 2) exercised
+`conn.execute()` directly and passed, which is exactly how this got missed
+— that method was never actually the one pandas calls for a read. Fixed by
+moving the translation (and the rollback-on-error safety net from item 10)
+into a cursor wrapper returned by `DbConnection.cursor()` itself, so it
+applies no matter which path reaches `.execute()`. The lesson: when
+wrapping a DB connection for a library that also touches it internally
+(pandas, here), the adaptation needs to live at the lowest shared choke
+point (`cursor()`), not at a higher-level convenience method (`execute()`)
+that assumes it's the only entry point — verify against the *actual* call
+pattern the other library uses, not just your own code's call pattern.
+
 ## Verifying it without a live Postgres instance available
 
 Most of this was fixed and verified without direct access to run a real

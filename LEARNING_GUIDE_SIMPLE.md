@@ -76,6 +76,12 @@ something real. In order:
    new entries you add going forward don't accidentally clash with the
    older data that got copied in. That's now handled automatically as
    part of the one-time data-copy step.
+7. **The translator from step 1 turned out to have a gap** — found the
+   morning after everything else shipped, when the live app actually
+   crashed loading your accounts page. One particular way the app fetches
+   data was quietly skipping the translator entirely, so some pages worked
+   and others didn't. Fixed the same day, and moved the fix to a spot in
+   the code that nothing can accidentally skip going forward.
 
 ## A security fix worth knowing about
 

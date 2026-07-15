@@ -146,9 +146,11 @@ Design principles that shape every feature decision here:
   that was masking real errors, translating SQLite-style query
   placeholders to Postgres's for the ~120 queries in the app, replacing
   raw `PRAGMA`/`sqlite_master` schema-introspection calls with
-  backend-aware equivalents, and resolving a two-entry-point import
-  conflict between the local launcher and the Cloud deployment shim. Full
-  story: `LEARNING_GUIDE_TECHNICAL.md` (dev version) /
+  backend-aware equivalents, resolving a two-entry-point import conflict
+  between the local launcher and the Cloud deployment shim, and (found the
+  morning after deploying) fixing a gap where `pandas.read_sql()` was
+  quietly bypassing the placeholder translation for most of the app's read
+  queries. Full story: `LEARNING_GUIDE_TECHNICAL.md` (dev version) /
   `LEARNING_GUIDE_SIMPLE.md` (plain-language version).
 - **Full code review pass**: fixed a live security issue (parent-mode
   password lock was defaulting to unlocked — harmless locally, a real
