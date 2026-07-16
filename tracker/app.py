@@ -3980,14 +3980,12 @@ st.set_page_config(page_title="Homeschool", page_icon="📚", layout="wide")
 # rule just silently no-ops rather than breaking anything.
 st.markdown("""
 <style>
-/* Sunset Wash — a warm-to-cool comic-sky-panel gradient instead of a
-   flat/textured background. Same gradient on the sidebar so the whole
-   app reads as one continuous page rather than two different surfaces. */
-.stApp {
-    background-image: linear-gradient(160deg, #FFD23F, #FF9F45 38%, #FF5FA2 72%, #B084F0);
-}
+/* Solid Pop — one bold flat color for the main page (set via
+   backgroundColor in config.toml), with the sidebar in a contrasting
+   flat color so the two regions read as distinct. */
 [data-testid="stSidebar"] {
-    background-image: linear-gradient(160deg, #FFD23F, #FF9F45 38%, #FF5FA2 72%, #B084F0);
+    background-color: #4FC3E8;
+    background-image: none;
 }
 [data-testid="stVerticalBlockBorderWrapper"] > div {
     border: 3px solid #1A1610 !important;
