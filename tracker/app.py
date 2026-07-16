@@ -3433,7 +3433,9 @@ with st.sidebar:
     client_ip = st.context.ip_address
     is_local = client_ip in (None, "127.0.0.1", "::1", "localhost")
     if is_local:
-        mode = st.radio("Mode", ["🎒 Student", "🔑 Parent"], label_visibility="collapsed")
+        # This Mac is the parent's launch point, so default to Parent mode
+        # on load rather than Student.
+        mode = st.radio("Mode", ["🔑 Parent", "🎒 Student"], label_visibility="collapsed")
     else:
         mode = "🎒 Student"
 
