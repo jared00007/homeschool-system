@@ -1310,22 +1310,6 @@ def setting_set(key, value):
     conn.commit()
 
 
-def get_contact_email():
-    return (setting_get("contact_email") or "").strip()
-
-
-def set_contact_email(email):
-    setting_set("contact_email", (email or "").strip())
-
-
-def welcome_seen():
-    return (setting_get("welcome_seen") or "0").lower() in {"1", "true", "yes"}
-
-
-def mark_welcome_seen():
-    setting_set("welcome_seen", "1")
-
-
 def get_students():
     return pd.read_sql("SELECT * FROM students ORDER BY name", conn)
 
@@ -3441,56 +3425,20 @@ st.set_page_config(page_title="Homeschool", page_icon="📚", layout="wide")
 
 students_df = get_students()
 
-if "welcome_seen" not in st.session_state:
-    st.session_state.welcome_seen = welcome_seen()
-
-if not st.session_state.welcome_seen:
-    with st.container(border=True):
-        st.success("Welcome to your homeschool tracker")
-        st.write("This cloud version is ready to use. You can add students, log hours, and track progress from the URL.")
-        st.caption("Optional: leave an email below if you want future updates or support contact.")
-        current_email = get_contact_email()
-        email_input = st.text_input("Email (optional)", value=current_email, key="welcome_email")
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Save email", use_container_width=True):
-                set_contact_email(email_input)
-                mark_welcome_seen()
-                st.session_state.welcome_seen = True
-                st.rerun()
-        with col2:
-            if st.button("Skip for now", use_container_width=True):
-                mark_welcome_seen()
-                st.session_state.welcome_seen = True
-                st.rerun()
-    st.divider()
-
-# Show the *actual* connected backend, not just whether an env var is
-# present — a failed Postgres connection now raises instead of silently
-# falling back, so if we've reached this line at all, `conn.backend`
-# reflects what's really in use. This is more reliable than checking
-# hosting-platform logs, which can buffer/drop stdout from import time.
-if conn.backend == "postgres":
-    _pg_host = getattr(getattr(conn.conn, "url", None), "host", None) or "?"
-    st.success(f"✅ Connected to the cloud Postgres database ({_pg_host}).")
-elif os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL"):
-    st.warning("⚠️ DATABASE_URL/SUPABASE_DB_URL is set, but this session "
-              "connected to local SQLite instead — that shouldn't happen "
-              "(a failed cloud connection should raise an error, not fall "
-              "back silently). Check the app logs for details.")
-
 with st.sidebar:
     st.title("📚 Homeschool")
     # Parent mode is only offered to whoever's on this Mac itself
     # (localhost) — devices reached over the LAN address (Landon's
-    # laptop/phone) see Student mode only, no toggle. The parent password
-    # is a matter of which device you're on, not a password.
+    # laptop/phone) see Student mode only, no toggle at all.
     client_ip = st.context.ip_address
     is_local = client_ip in (None, "127.0.0.1", "::1", "localhost")
     if is_local:
         mode = st.radio("Mode", ["🎒 Student", "🔑 Parent"], label_visibility="collapsed")
     else:
         mode = "🎒 Student"
+
+    if mode == "🎒 Student":
+        st.caption("Student View")
 
     st.divider()
     # --- student picker
