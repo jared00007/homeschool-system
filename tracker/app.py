@@ -4004,6 +4004,17 @@ button[kind="primary"]:hover, button[kind="secondary"]:hover {
 }
 .stTabs [data-baseweb="tab-list"] { gap: 4px; }
 .stTabs [aria-selected="true"] { font-weight: 800 !important; }
+
+/* Student nav — Always-On Color: every button in a group carries a pale
+   tint of that group's color at rest, and goes full-saturated with an
+   outline when it's the active view. Scoped via st.container(key=...),
+   which Streamlit renders as a stable "st-key-<name>" class. */
+.st-key-nav_schedule button[kind="secondary"] { background: #BEE7F7 !important; color: #1A1610 !important; }
+.st-key-nav_schedule button[kind="primary"] { background: #4FC3E8 !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
+.st-key-nav_learning button[kind="secondary"] { background: #CFF0D3 !important; color: #1A1610 !important; }
+.st-key-nav_learning button[kind="primary"] { background: #6FCF7A !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
+.st-key-nav_extras button[kind="secondary"] { background: #FCD3E6 !important; color: #1A1610 !important; }
+.st-key-nav_extras button[kind="primary"] { background: #FF5FA2 !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -4176,18 +4187,49 @@ if not parent_mode:
         st.progress(done_ct / len(blocks),
                     text=f"{done_ct} / {len(blocks)} blocks logged")
 
-    (t_day1, t_elect, t_today, t_cal, t_week, t_scope, t_fun, t_parks, t_quiz,
-     t_logins, t_grades, t_resources) = st.tabs(
-        ["🚀 Day 1 & Day 2 Checklist", "🎯 Electives & Books", "📅 Today",
-         "📆 Calendar", "🗓 My Week", "📋 8th Grade Scope", "🗺️ Quest Board",
-         "🗺️ Travel Log", "📝 Quizzes", "🔑 My Logins", "🏆 My Grades",
-         "📎 Resources"])
+    if "student_view" not in st.session_state:
+        st.session_state.student_view = "Today"
 
-    with t_day1:
+    def _nav_group(label, items, key):
+        st.markdown(f'<div style="font-size:10.5px;font-weight:800;letter-spacing:.08em;'
+                   f'text-transform:uppercase;color:#8a7f68;margin:8px 0 4px">{label}</div>',
+                   unsafe_allow_html=True)
+        with st.container(key=key):
+            cols = st.columns(len(items))
+            for col, (view_label, icon) in zip(cols, items):
+                with col:
+                    is_on = st.session_state.student_view == view_label
+                    if st.button(f"{icon} {view_label}", key=f"{key}_{view_label}",
+                                use_container_width=True,
+                                type="primary" if is_on else "secondary"):
+                        st.session_state.student_view = view_label
+                        st.rerun()
+
+    _nav_group("📅 Schedule & Quests", [
+        ("Today", "📅"), ("My Week", "🗓"), ("Calendar", "📆"), ("Quest Board", "🗺️")],
+        "nav_schedule")
+    _nav_group("🎯 Learning", [
+        ("Electives & Books", "🎯"), ("Quizzes", "📝"), ("My Grades", "🏆")],
+        "nav_learning")
+    _nav_group("🧳 Extras", [
+        ("Travel Log", "🧳"), ("Resources", "📎")],
+        "nav_extras")
+
+    with st.popover("⋯ More"):
+        for view_label, icon in [("Day 1 Checklist", "🚀"), ("8th Grade Scope", "📋"),
+                                 ("My Logins", "🔑")]:
+            if st.button(f"{icon} {view_label}", key=f"nav_more_{view_label}",
+                        use_container_width=True):
+                st.session_state.student_view = view_label
+                st.rerun()
+
+    st.divider()
+
+    if st.session_state.student_view == "Day 1 Checklist":
         school_year = student_row["school_year"] or "current"
         render_day1_checklist(student_id, school_year)
 
-    with t_today:
+    elif st.session_state.student_view == "Today":
         d = date.today()
         st.subheader(f"{d.strftime('%A')}, {d.strftime('%B %d')}")
         today_school_year = student_row["school_year"] or "current"
@@ -4239,7 +4281,7 @@ if not parent_mode:
 
         render_health_habits_checkin(student_id)
 
-    with t_cal:
+    elif st.session_state.student_view == "Calendar":
         if "cal_month" not in st.session_state:
             st.session_state.cal_month = date.today().replace(day=1)
 
@@ -4371,7 +4413,7 @@ if not parent_mode:
             st.caption("Future day — you can see the plan but can't mark it done yet.")
         render_day_blocks(pick, allow_marking=allow, key_prefix="cal")
 
-    with t_week:
+    elif st.session_state.student_view == "My Week":
         st.subheader("Weekly schedule")
         for day, blocks in WEEKLY_SCHEDULE.items():
             hl = " 👈 today" if day == date.today().strftime("%A") else ""
@@ -4390,22 +4432,22 @@ if not parent_mode:
                     if res[2]:
                         st.caption(res[2])
 
-    with t_scope:
+    elif st.session_state.student_view == "8th Grade Scope":
         render_scope_reference()
 
-    with t_fun:
+    elif st.session_state.student_view == "Quest Board":
         school_year = student_row["school_year"] or "current"
         render_fun_projects_picker(student_id, school_year, key_prefix="stu")
 
-    with t_parks:
+    elif st.session_state.student_view == "Travel Log":
         school_year = student_row["school_year"] or "current"
         render_travel_log(student_id, school_year, key_prefix="stu")
 
-    with t_elect:
+    elif st.session_state.student_view == "Electives & Books":
         school_year = student_row["school_year"] or "current"
         render_student_curriculum_setup(student_id, school_year)
 
-    with t_quiz:
+    elif st.session_state.student_view == "Quizzes":
         st.subheader("Quizzes")
         st.caption("Pick a subject and topic to test what you've learned. "
                    "Auto-graded and saved straight to your Grades.")
@@ -4475,10 +4517,10 @@ if not parent_mode:
                 del st.session_state.quiz_results[quiz_key]
                 st.rerun()
 
-    with t_logins:
+    elif st.session_state.student_view == "My Logins":
         render_accounts_table(student_id)
 
-    with t_grades:
+    elif st.session_state.student_view == "My Grades":
         st.subheader("My grades")
         gs = grade_summary(student_id)
         if gs.empty:
@@ -4486,7 +4528,7 @@ if not parent_mode:
         else:
             st.dataframe(gs, use_container_width=True, hide_index=True)
 
-    with t_resources:
+    elif st.session_state.student_view == "Resources":
         render_resources_tab(parent_mode=False)
 
 # ============================================================ PARENT MODE
