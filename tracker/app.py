@@ -105,9 +105,7 @@ WA_ASSESSMENT_RESOURCES = (
 CURRICULUM_RESOURCES = {
     "Mathematics": ("Khan Academy — 8th Grade Math",
                     "https://www.khanacademy.org/math/cc-eighth-grade-math",
-                    "Work through units in order; use the mastery system. "
-                    "Supplement 2x/week with IXL Math (ixl.com) for extra "
-                    "targeted skill practice.",
+                    "Work through units in order; use the mastery system.",
                     ["Go to the link and log in with your school email.",
                      "Click \"Course,\" and make sure \"8th grade\" is selected.",
                      "Find the first unit that isn't fully mastered yet — look "
@@ -118,11 +116,23 @@ CURRICULUM_RESOURCES = {
                      "this block, whichever comes first.",
                      "Missed a problem? Read the hint or \"explain\" article "
                      "before trying again — don't just guess.",
-                     "Twice a week, use this block for IXL Math instead "
-                     "(ixl.com) — ask a parent which days and which skills "
-                     "to focus on.",
                      "When the block is over, click \"✅ Done, got it\" below — "
                      "or \"😕 Done, still fuzzy\" if it didn't quite click."]),
+    "Mathematics — IXL": ("IXL Math — 8th Grade",
+                          "https://www.ixl.com/math/grade-8",
+                          "Dedicated IXL practice time — separate from the main "
+                          "Khan Academy block, targets specific skill gaps.",
+                          ["Go to the link and log in with your IXL account.",
+                           "If a parent assigned specific skills, do those first "
+                           "— check for a \"Recommendations\" or assigned list.",
+                           "If nothing's assigned, work on whichever skill has "
+                           "the lowest score (IXL shows a score per skill, aim "
+                           "to bring it above 80).",
+                           "Keep going until the block ends — don't stop after "
+                           "just one or two questions.",
+                           "When the block is over, click \"✅ Done, got it\" "
+                           "below — or \"😕 Done, still fuzzy\" if it didn't "
+                           "quite click."]),
     "Reading": ("CommonLit / library book",
                 "https://www.commonlit.org/",
                 "Passage + questions, or independent reading. Supplement 2x/week "
@@ -1125,13 +1135,17 @@ WEEKLY_SCHEDULE = {
                ("Writing", "11:00", "11:30"), ("Science", "12:00", "13:30"),
                ("Social Studies", "13:30", "14:30")],
     "Tuesday": [("Mathematics", "08:30", "10:00"), ("Reading", "10:00", "11:00"),
-                ("Writing", "11:00", "11:30"), ("History", "12:00", "13:30"),
+                ("Writing", "11:00", "11:30"),
+                ("Mathematics", "11:30", "12:00", "Mathematics — IXL"),
+                ("History", "12:00", "13:30"),
                 ("Science", "13:30", "14:30")],
     "Wednesday": [("Mathematics", "08:30", "09:30"), ("Reading", "09:30", "10:30"),
                   ("Writing", "10:30", "11:00"), ("Science", "11:30", "13:00"),
                   ("History", "13:00", "14:00")],
     "Thursday": [("Mathematics", "08:30", "09:30"), ("Reading", "09:30", "10:15"),
-                 ("Writing", "10:15", "10:30"), ("Social Studies", "11:00", "12:30"),
+                 ("Writing", "10:15", "10:30"),
+                 ("Mathematics", "10:30", "11:00", "Mathematics — IXL"),
+                 ("Social Studies", "11:00", "12:30"),
                  ("Occupational Education", "12:30", "13:15"),
                  ("Health", "13:15", "14:00")],
     "Friday": [("Mathematics", "08:30", "09:00"), ("Reading", "09:00", "09:30"),
@@ -1140,7 +1154,7 @@ WEEKLY_SCHEDULE = {
 }
 
 PLANNED_HOURS = {
-    "Mathematics": 5.0, "Reading": 4.0, "Writing": 2.0, "Science": 4.0,
+    "Mathematics": 6.0, "Reading": 4.0, "Writing": 2.0, "Science": 4.0,
     "Social Studies": 2.5, "History": 2.5, "Health": 0.75,
     "Occupational Education": 0.75, "Art & Music Appreciation": 2.0,
     "Electives": 2.0,
@@ -1319,6 +1333,8 @@ def get_conn():
         conn.execute("ALTER TABLE log_entries ADD COLUMN submitted_at TEXT")
     if "struggled" not in cols:
         conn.execute("ALTER TABLE log_entries ADD COLUMN struggled INTEGER DEFAULT 0")
+    if "block_start" not in cols:
+        conn.execute("ALTER TABLE log_entries ADD COLUMN block_start TEXT")
     # migration: older DBs may lack newer health_habits columns
     cols = table_columns(conn, "health_habits")
     if "journal" not in cols:
@@ -1420,22 +1436,31 @@ def get_entries(student_id, statuses=None):
 
 
 def add_entry(student_id, entry_date, subject, hours, description, day_type, status,
-              struggled=False):
+              struggled=False, block_start=None):
     conn.execute("""INSERT INTO log_entries
         (student_id, entry_date, subject, hours, description, day_type, status,
-         submitted_at, struggled)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+         submitted_at, struggled, block_start)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (student_id, entry_date.isoformat(), subject, hours, description, day_type,
-         status, datetime.now().isoformat(timespec="seconds"), int(struggled)))
+         status, datetime.now().isoformat(timespec="seconds"), int(struggled),
+         block_start))
     conn.commit()
 
 
-def get_block_entry(student_id, d, subject):
-    """The full log_entries row for one schedule block, or None if not logged yet."""
+def get_block_entry(student_id, d, subject, start=None):
+    """The full log_entries row for one schedule block, or None if not logged yet.
+
+    Matches on block_start when given, so two blocks that share a subject on
+    the same day (e.g. the main Mathematics block and a separate IXL block)
+    track independently. Rows with no block_start (logged before this field
+    existed, or added via Manual Log) still match by date+subject alone —
+    there was never more than one block per subject/day before this."""
     df = get_entries(student_id)
     if df.empty:
         return None
     m = df[(df["entry_date"] == d.isoformat()) & (df["subject"] == subject)]
+    if start is not None:
+        m = m[(m["block_start"] == start) | (m["block_start"].isna())]
     return None if m.empty else m.iloc[0]
 
 
@@ -2162,7 +2187,7 @@ def grade_summary(student_id):
 def suggest_quiz_for_day(student_id, d):
     """Pick a quiz topic tied to one of the subjects already scheduled today,
     preferring one that hasn't been taken yet."""
-    subjects_today = [s for s, _, _ in WEEKLY_SCHEDULE.get(d.strftime("%A"), [])]
+    subjects_today = [b[0] for b in WEEKLY_SCHEDULE.get(d.strftime("%A"), [])]
     ga = get_assignments(student_id)
     for subj in subjects_today:
         topics = QUIZ_BANK.get(subj)
@@ -3731,8 +3756,10 @@ if not parent_mode:
                 current_book = reading.iloc[0]
 
         done_ct = 0
-        for subject, start, end in blocks:
-            entry = get_block_entry(student_id, d, subject)
+        for block in blocks:
+            subject, start, end = block[0], block[1], block[2]
+            resource_key = block[3] if len(block) > 3 else subject
+            entry = get_block_entry(student_id, d, subject, start)
             status = entry["status"] if entry is not None else None
             if status:
                 done_ct += 1
@@ -3760,7 +3787,8 @@ if not parent_mode:
                                     st.caption(info[2])
                             done_label = ", ".join(chosen_electives["elective_name"])
                     else:
-                        res = CURRICULUM_RESOURCES.get(subject, CURRICULUM_RESOURCES["Electives"])
+                        res = CURRICULUM_RESOURCES.get(resource_key,
+                            CURRICULUM_RESOURCES.get(subject, CURRICULUM_RESOURCES["Electives"]))
                         st.markdown(f"🔗 [{res[0]}]({res[1]})")
                         st.caption(res[2])
                         done_label = res[0]
@@ -3778,13 +3806,13 @@ if not parent_mode:
                                      key=f"{key_prefix}_{d.isoformat()}_{subject}_{start}"):
                             add_entry(student_id, d, subject, block_hours(start, end),
                                       f"Completed via {done_label}", "Instruction", "pending",
-                                      struggled=False)
+                                      struggled=False, block_start=start)
                             st.rerun()
                         if st.button("😕 Done, still fuzzy",
                                      key=f"{key_prefix}_fuzzy_{d.isoformat()}_{subject}_{start}"):
                             add_entry(student_id, d, subject, block_hours(start, end),
                                       f"Completed via {done_label}", "Instruction", "pending",
-                                      struggled=True)
+                                      struggled=True, block_start=start)
                             st.rerun()
         st.progress(done_ct / len(blocks),
                     text=f"{done_ct} / {len(blocks)} blocks logged")
@@ -3971,8 +3999,11 @@ if not parent_mode:
             hl = " 👈 today" if day == date.today().strftime("%A") else ""
             with st.expander(f"**{day}**{hl}",
                              expanded=(day == date.today().strftime("%A"))):
-                for subject, start, end in blocks:
-                    res = CURRICULUM_RESOURCES.get(subject, CURRICULUM_RESOURCES["Electives"])
+                for block in blocks:
+                    subject, start, end = block[0], block[1], block[2]
+                    resource_key = block[3] if len(block) > 3 else subject
+                    res = CURRICULUM_RESOURCES.get(resource_key,
+                        CURRICULUM_RESOURCES.get(subject, CURRICULUM_RESOURCES["Electives"]))
                     st.markdown(f"- **{format_time12(start)}–{format_time12(end)}** · "
                                f"{subject} — [{res[0]}]({res[1]})")
                     if res[2]:
