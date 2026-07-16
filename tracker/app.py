@@ -105,7 +105,9 @@ WA_ASSESSMENT_RESOURCES = (
 CURRICULUM_RESOURCES = {
     "Mathematics": ("Khan Academy — 8th Grade Math",
                     "https://www.khanacademy.org/math/cc-eighth-grade-math",
-                    "Work through units in order; use the mastery system.",
+                    "Work through units in order; use the mastery system. "
+                    "Supplement 2x/week with IXL Math (ixl.com) for extra "
+                    "targeted skill practice.",
                     ["Go to the link and log in with your school email.",
                      "Click \"Course,\" and make sure \"8th grade\" is selected.",
                      "Find the first unit that isn't fully mastered yet — look "
@@ -116,6 +118,9 @@ CURRICULUM_RESOURCES = {
                      "this block, whichever comes first.",
                      "Missed a problem? Read the hint or \"explain\" article "
                      "before trying again — don't just guess.",
+                     "Twice a week, use this block for IXL Math instead "
+                     "(ixl.com) — ask a parent which days and which skills "
+                     "to focus on.",
                      "When the block is over, click \"✅ Done, got it\" below — "
                      "or \"😕 Done, still fuzzy\" if it didn't quite click."]),
     "Reading": ("CommonLit / library book",
