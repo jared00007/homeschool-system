@@ -12,6 +12,7 @@ Modes:
     work, sees compliance dashboards, manages assessments, exports records.
 """
 
+from html import escape as escape_html
 import os
 import random
 import sqlite3
@@ -1968,6 +1969,68 @@ def mess_badge(mess_level):
            "High": "💦 High mess"}.get(mess_level, "🧼 Low mess")
 
 
+# Trading-card styling for the Quest Board — a deliberately fixed bright
+# card face (like a real physical card) rather than following Streamlit's
+# light/dark theme, same way a paper card doesn't change color in the dark.
+QUEST_CARD_CSS = """
+<style>
+.qcard { position: relative; border-radius: 14px; padding: 3px; margin-bottom: 14px;
+  background: linear-gradient(155deg, #b8bcc8, #9aa3b2); transition: transform 0.15s ease; }
+.qcard:hover { transform: translateY(-3px); }
+.qcard.active { background: linear-gradient(155deg, #ff8a5c, #ffd76a); }
+.qcard.done { background: linear-gradient(155deg, #d4a017, #8a6d10); }
+.qcard-inner { background: #fdfbff; border-radius: 11px; overflow: hidden; color: #241b2d; }
+.qcard-art { height: 92px; display: flex; align-items: center; justify-content: center;
+  font-size: 44px; background: linear-gradient(160deg, #efe9ff, #ddeee8); position: relative; }
+.qcard.active .qcard-art { background: linear-gradient(160deg, #fff2df, #ffe3d1); }
+.qcard.done .qcard-art { background: linear-gradient(160deg, #fff6da, #f5e3ad); }
+.qcard-ribbon { position: absolute; top: 8px; left: 8px; font-size: 9.5px; font-weight: 800;
+  letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; border-radius: 5px;
+  background: #ffffffaa; color: #241b2d; }
+.qcard-body { padding: 10px 13px 12px; }
+.qcard-title { font-weight: 800; font-size: 14.5px; margin-bottom: 3px; }
+.qcard-tags { font-size: 10.5px; color: #7a7286; margin-bottom: 6px; }
+.qcard-desc { font-size: 11.5px; color: #4a4152; line-height: 1.4; margin-bottom: 8px; }
+.qcard-stats { display: flex; justify-content: space-between; align-items: center;
+  border-top: 1px dashed #00000022; padding-top: 6px; font-size: 10.5px; }
+.qcard-hours { font-weight: 800; color: #241b2d; }
+.qcard-mess i { width: 5px; height: 5px; border-radius: 50%; display: inline-block;
+  margin-left: 2px; background: #00000020; }
+.qcard-mess i.on { background: #b06b2c; }
+</style>
+"""
+
+
+def render_quest_card(p, status):
+    """Render one quest as a trading-card-styled HTML block. status is
+    'queued', 'active', or 'done' — controls the card's border/art color
+    and ribbon text. Purely visual; the caller renders real st.button()s
+    beneath since HTML inside st.markdown can't call back into Python."""
+    ribbon = {"queued": "New", "active": "In Progress", "done": "Collected"}[status]
+    icon = p["icon"] or "🗺️"
+    title = escape_html(str(p["title"]))
+    tags = escape_html(str(p["subjects"] or p["subject"] or ""))
+    desc = escape_html(str(p["description"] or ""))
+    hours = p["est_hours"] or 1.0
+    mess_level = p["mess_level"] if "mess_level" in p.index else "Low"
+    mess_n = {"Low": 1, "Medium": 2, "High": 3}.get(mess_level, 1)
+    dots = "".join(f'<i class="{"on" if n <= mess_n else ""}"></i>' for n in (1, 2, 3))
+    st.markdown(f"""
+        <div class="qcard {status}"><div class="qcard-inner">
+          <div class="qcard-art">{icon}<div class="qcard-ribbon">{ribbon}</div></div>
+          <div class="qcard-body">
+            <div class="qcard-title">{title}</div>
+            <div class="qcard-tags">{tags}</div>
+            <div class="qcard-desc">{desc}</div>
+            <div class="qcard-stats">
+              <span class="qcard-hours">{hours:.1f} HRS</span>
+              <span class="qcard-mess">{dots}</span>
+            </div>
+          </div>
+        </div></div>
+    """, unsafe_allow_html=True)
+
+
 def finish_fun_project(project_id, student_id, title, subjects_str, est_hours):
     """Marks a student_fun_projects row finished and — once, idempotently —
     splits est_hours evenly across its valid tagged WA subjects into pending
@@ -2664,6 +2727,7 @@ def render_fun_projects_picker(student_id, school_year, key_prefix):
     st.caption("A backlog of bigger real-world projects for the school year — "
                "pick what sounds interesting, not all of them need to get done. "
                "Finishing one sends the hours to a parent for approval automatically.")
+    st.markdown(QUEST_CARD_CSS, unsafe_allow_html=True)
 
     mine = get_student_fun_projects(student_id, school_year)
     my_titles = list(mine["title"]) if not mine.empty else []
@@ -2681,53 +2745,46 @@ def render_fun_projects_picker(student_id, school_year, key_prefix):
     if not active.empty:
         st.markdown("### ⚔️ Active Quest" + ("s" if len(active) > 1 else ""))
         for _, p in active.iterrows():
-            with st.container(border=True):
-                ac1, ac2 = st.columns([4, 1.4])
-                with ac1:
-                    st.markdown(f"#### {p['icon'] or '🗺️'} {p['title']}")
-                    st.caption(f"{p['subjects'] or p['subject']} · "
-                              f"⏱️ ~{p['est_hours'] or 1.0} hrs")
-                    st.write(p["description"])
-                    steps = parse_steps(p["steps"])
-                    if steps:
-                        with st.expander("📋 Steps"):
-                            for i, s in enumerate(steps, 1):
-                                st.markdown(f"{i}. {s}")
-                with ac2:
-                    if st.button("🏆 Complete Quest", key=f"{key_prefix}_proj_finish_{p['id']}",
-                                type="primary", use_container_width=True):
-                        finish_fun_project(int(p["id"]), student_id, p["title"],
-                                          p["subjects"] or p["subject"], p["est_hours"] or 1.0)
-                        st.success("Quest complete! Sent to your parent for approval.")
-                        st.rerun()
-                    if st.button("⏸️ Pause", key=f"{key_prefix}_proj_pause_{p['id']}",
-                                use_container_width=True):
-                        update_fun_project_status(int(p["id"]), "planned")
-                        st.rerun()
-                    if st.button("🗑️ Remove", key=f"{key_prefix}_proj_del_{p['id']}",
-                                use_container_width=True):
-                        delete_student_fun_project(int(p["id"]))
-                        st.rerun()
+            ac1, ac2 = st.columns([2, 3])
+            with ac1:
+                render_quest_card(p, "active")
+            with ac2:
+                steps = parse_steps(p["steps"])
+                if steps:
+                    with st.expander("📋 Steps"):
+                        for i, s in enumerate(steps, 1):
+                            st.markdown(f"{i}. {s}")
+                bc1, bc2, bc3 = st.columns(3)
+                if bc1.button("🏆 Complete", key=f"{key_prefix}_proj_finish_{p['id']}",
+                             type="primary", use_container_width=True):
+                    finish_fun_project(int(p["id"]), student_id, p["title"],
+                                      p["subjects"] or p["subject"], p["est_hours"] or 1.0)
+                    st.success("Quest complete! Sent to your parent for approval.")
+                    st.rerun()
+                if bc2.button("⏸️ Pause", key=f"{key_prefix}_proj_pause_{p['id']}",
+                             use_container_width=True):
+                    update_fun_project_status(int(p["id"]), "planned")
+                    st.rerun()
+                if bc3.button("🗑️ Remove", key=f"{key_prefix}_proj_del_{p['id']}",
+                             use_container_width=True):
+                    delete_student_fun_project(int(p["id"]))
+                    st.rerun()
         st.divider()
 
     if not queued.empty:
         st.markdown("### 📜 Queued Quests")
-        for _, p in queued.iterrows():
-            with st.container(border=True):
-                qc1, qc2 = st.columns([4, 1.4])
-                with qc1:
-                    st.markdown(f"**{p['icon'] or '🗺️'} {p['title']}** — "
-                               f"{p['subjects'] or p['subject']}")
-                    st.caption(p["description"])
-                with qc2:
-                    if st.button("▶️ Start Quest", key=f"{key_prefix}_proj_start_{p['id']}",
-                                type="primary", use_container_width=True):
-                        update_fun_project_status(int(p["id"]), "in_progress")
-                        st.rerun()
-                    if st.button("🗑️ Remove", key=f"{key_prefix}_proj_qdel_{p['id']}",
-                                use_container_width=True):
-                        delete_student_fun_project(int(p["id"]))
-                        st.rerun()
+        qcols = st.columns(3)
+        for i, (_, p) in enumerate(queued.iterrows()):
+            with qcols[i % 3]:
+                render_quest_card(p, "queued")
+                if st.button("▶️ Start Quest", key=f"{key_prefix}_proj_start_{p['id']}",
+                            type="primary", use_container_width=True):
+                    update_fun_project_status(int(p["id"]), "in_progress")
+                    st.rerun()
+                if st.button("🗑️ Remove", key=f"{key_prefix}_proj_qdel_{p['id']}",
+                            use_container_width=True):
+                    delete_student_fun_project(int(p["id"]))
+                    st.rerun()
         st.divider()
 
     st.markdown("### 🗺️ Available Quests")
@@ -2743,29 +2800,27 @@ def render_fun_projects_picker(student_id, school_year, key_prefix):
         if not available:
             continue
         with st.expander(f"{subj} ({len(available)})"):
-            cols = st.columns(2)
+            cols = st.columns(3)
             for i, proj in enumerate(available):
-                with cols[i % 2]:
-                    with st.container(border=True):
-                        st.markdown(f"#### {proj['icon'] or '🗺️'} {proj['title']}")
-                        st.caption(f"{mess_badge(proj['mess_level'])} · "
-                                  f"⏱️ ~{proj['est_hours'] or 1.0} hrs")
-                        st.write(proj["description"])
-                        if st.button("➕ Add to My Quests",
-                                    key=f"{key_prefix}_proj_add_{proj['id']}_{subj}",
-                                    use_container_width=True):
-                            add_student_fun_project(
-                                student_id, school_year, proj["title"],
-                                proj["subjects"] or proj["subject"], proj["description"],
-                                proj["steps"], proj["est_hours"] or 1.0, proj["icon"])
-                            st.rerun()
+                with cols[i % 3]:
+                    render_quest_card(proj, "queued")
+                    if st.button("➕ Add to My Quests",
+                                key=f"{key_prefix}_proj_add_{proj['id']}_{subj}",
+                                use_container_width=True):
+                        add_student_fun_project(
+                            student_id, school_year, proj["title"],
+                            proj["subjects"] or proj["subject"], proj["description"],
+                            proj["steps"], proj["est_hours"] or 1.0, proj["icon"])
+                        st.rerun()
 
     if not finished.empty:
         st.divider()
         with st.expander(f"🏆 Trophy Case ({len(finished)} completed)"):
-            for _, p in finished.sort_values("finished_date", ascending=False).iterrows():
-                st.markdown(f"{p['icon'] or '🗺️'} **{p['title']}** — "
-                           f"finished {fmt_date(p['finished_date'])}")
+            fcols = st.columns(3)
+            for i, (_, p) in enumerate(finished.sort_values("finished_date", ascending=False).iterrows()):
+                with fcols[i % 3]:
+                    render_quest_card(p, "done")
+                    st.caption(f"Finished {fmt_date(p['finished_date'])}")
 
 
 def render_fun_project_pool_admin():
