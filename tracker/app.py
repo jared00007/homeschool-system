@@ -1165,6 +1165,10 @@ def get_conn():
         status TEXT DEFAULT 'planned', selected_date TEXT, finished_date TEXT,
         finished_at TEXT, notes TEXT,
         FOREIGN KEY (student_id) REFERENCES students (id))""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS curriculum_materials (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL,
+        subject TEXT, kind TEXT NOT NULL, file_path TEXT, url TEXT,
+        notes TEXT, created_at TEXT)""")
     conn.execute("""CREATE TABLE IF NOT EXISTS health_habits (
         id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
         log_date TEXT NOT NULL, exercise INTEGER DEFAULT 0,
@@ -1514,6 +1518,35 @@ def update_fun_project_pool_option(option_id, title, subject, description):
 
 def delete_fun_project_pool_option(option_id):
     conn.execute("DELETE FROM fun_project_pool WHERE id = ?", (option_id,))
+    conn.commit()
+
+
+def save_uploaded_curriculum_file(uploaded_file):
+    """Write an st.file_uploader result to uploads/curriculum, return its
+    path relative to the app folder (what gets stored in the DB)."""
+    target_dir = UPLOADS_BASE / "curriculum"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    ext = Path(uploaded_file.name).suffix or ".dat"
+    fname = f"{int(time.time() * 1000)}{ext}"
+    (target_dir / fname).write_bytes(uploaded_file.getvalue())
+    return str(Path("uploads") / "curriculum" / fname)
+
+
+def get_curriculum_materials():
+    return pd.read_sql(
+        "SELECT * FROM curriculum_materials ORDER BY subject, created_at DESC", conn)
+
+
+def add_curriculum_material(title, subject, kind, file_path, url, notes):
+    conn.execute("""INSERT INTO curriculum_materials
+        (title, subject, kind, file_path, url, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (title, subject, kind, file_path, url, notes, datetime.now().isoformat()))
+    conn.commit()
+
+
+def delete_curriculum_material(material_id):
+    conn.execute("DELETE FROM curriculum_materials WHERE id = ?", (material_id,))
     conn.commit()
 
 
@@ -2395,6 +2428,85 @@ def render_fun_project_pool_admin():
         add_fun_project_pool_option, update_fun_project_pool_option,
         delete_fun_project_pool_option, key_prefix="funpool",
         expander_label_fn=lambda row: f"{row['title']} ({row['subject']})")
+
+
+def render_resources_tab(parent_mode):
+    """Browsable curriculum material library — photos, documents, or links.
+    Parent can add/remove material; both views browse the same list."""
+    st.subheader("📎 Resources")
+    st.caption("Photos, documents, or links added to go with the curriculum.")
+
+    if parent_mode:
+        with st.expander("➕ Add material"):
+            title = st.text_input("Title", key="mat_title")
+            subject = st.selectbox("Subject", WA_SUBJECTS + ["Electives"], key="mat_subject")
+            kind_label = st.radio("Type", ["📷 Photo", "📄 Document", "🔗 Link"],
+                                  key="mat_kind", horizontal=True)
+            uploaded, url = None, None
+            if kind_label == "🔗 Link":
+                url = st.text_input("URL (video, article, website...)", key="mat_url")
+            elif kind_label == "📷 Photo":
+                uploaded = st.file_uploader("Upload photo", type=["jpg", "jpeg", "png"],
+                                            key="mat_file_photo")
+            else:
+                uploaded = st.file_uploader("Upload document",
+                                            type=["pdf", "doc", "docx"], key="mat_file_doc")
+            notes = st.text_area("Notes (optional)", key="mat_notes")
+            if st.button("Add material", key="mat_add_btn"):
+                if not title.strip():
+                    st.warning("Give it a title.")
+                elif kind_label == "🔗 Link" and not (url or "").strip():
+                    st.warning("Add a URL.")
+                elif kind_label != "🔗 Link" and uploaded is None:
+                    st.warning("Choose a file to upload.")
+                else:
+                    kind = {"📷 Photo": "photo", "📄 Document": "document",
+                            "🔗 Link": "link"}[kind_label]
+                    file_path = save_uploaded_curriculum_file(uploaded) if uploaded else None
+                    add_curriculum_material(title.strip(), subject, kind, file_path,
+                                            (url or "").strip() or None, notes.strip())
+                    st.success("Added.")
+                    st.rerun()
+        st.divider()
+
+    materials = get_curriculum_materials()
+    if materials.empty:
+        st.info("No materials added yet." if parent_mode else "No materials yet.")
+        return
+
+    subjects = sorted(materials["subject"].dropna().unique())
+    if materials["subject"].isna().any():
+        subjects.append(None)
+
+    for subject in subjects:
+        subset = materials[materials["subject"] == subject] if subject is not None \
+            else materials[materials["subject"].isna()]
+        with st.expander(subject or "Uncategorized"):
+            for _, m in subset.iterrows():
+                with st.container(border=True):
+                    c1, c2 = st.columns([5, 1])
+                    with c1:
+                        st.markdown(f"**{m['title']}**")
+                        if m["notes"]:
+                            st.caption(m["notes"])
+                        if m["kind"] == "photo" and m["file_path"]:
+                            full_path = Path(__file__).parent / m["file_path"]
+                            if full_path.exists():
+                                st.image(str(full_path), width=300)
+                        elif m["kind"] == "document" and m["file_path"]:
+                            full_path = Path(__file__).parent / m["file_path"]
+                            if full_path.exists():
+                                st.download_button(
+                                    "⬇️ Open document", full_path.read_bytes(),
+                                    file_name=full_path.name,
+                                    key=f"mat_dl_{m['id']}")
+                        elif m["kind"] == "link" and m["url"]:
+                            st.link_button("🔗 Open link", m["url"])
+                    with c2:
+                        if parent_mode:
+                            if st.button("Remove", key=f"mat_del_{m['id']}"):
+                                delete_curriculum_material(int(m["id"]))
+                                st.rerun()
 
 
 def _points_from_visits(visits_df, id_col, name_col):
@@ -3545,10 +3657,11 @@ if not parent_mode:
                     text=f"{done_ct} / {len(blocks)} blocks logged")
 
     (t_day1, t_elect, t_today, t_cal, t_week, t_scope, t_fun, t_parks, t_quiz,
-     t_logins, t_grades) = st.tabs(
+     t_logins, t_grades, t_resources) = st.tabs(
         ["🚀 Day 1 & Day 2 Checklist", "🎯 Electives & Books", "📅 Today",
          "📆 Calendar", "🗓 My Week", "📋 8th Grade Scope", "🎉 Make It Fun",
-         "🗺️ Travel Log", "📝 Quizzes", "🔑 My Logins", "🏆 My Grades"])
+         "🗺️ Travel Log", "📝 Quizzes", "🔑 My Logins", "🏆 My Grades",
+         "📎 Resources"])
 
     with t_day1:
         school_year = student_row["school_year"] or "current"
@@ -3826,6 +3939,9 @@ if not parent_mode:
         else:
             st.dataframe(gs, use_container_width=True, hide_index=True)
 
+    with t_resources:
+        render_resources_tab(parent_mode=False)
+
 # ============================================================ PARENT MODE
 else:
     if student_id is None:
@@ -3841,11 +3957,11 @@ else:
         {"error": st.error, "warning": st.warning, "info": st.info}[level](msg)
 
     (t_checklist, t_review, t_log, t_grading, t_dash, t_cov, t_scope, t_fun,
-     t_parks, t_accounts, t_assess, t_export, t_settings) = st.tabs(
+     t_parks, t_accounts, t_assess, t_export, t_settings, t_resources) = st.tabs(
         ["🚀 Launch Checklist", "🕓 Review & Approve", "📝 Manual Log", "🎓 Grading",
          "📊 Dashboard", "📚 Curriculum", "📋 8th Grade Scope", "🎉 Make It Fun",
          "🗺️ Travel Log", "🔑 Accounts", "✅ Assessments", "⬇️ Export",
-         "⚙️ Settings"])
+         "⚙️ Settings", "📎 Resources"])
 
     # ---- Launch Checklist
     with t_checklist:
@@ -4167,3 +4283,6 @@ else:
     with t_settings:
         st.caption("Schedule, curriculum links, and weekly hour targets are constants "
                    "near the top of app.py — edit that file to change the plan.")
+
+    with t_resources:
+        render_resources_tab(parent_mode=True)
