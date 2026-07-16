@@ -10,3 +10,4 @@ venv/
 tracker/venv/
 .DS_Store
 **/.DS_Store
+app-links.txt

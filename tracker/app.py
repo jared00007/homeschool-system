@@ -1267,6 +1267,9 @@ def get_conn():
     cols = table_columns(conn, "student_books")
     if "finished_at" not in cols:
         conn.execute("ALTER TABLE student_books ADD COLUMN finished_at TEXT")
+    cols = table_columns(conn, "curriculum_materials")
+    if "seen" not in cols:
+        conn.execute("ALTER TABLE curriculum_materials ADD COLUMN seen INTEGER DEFAULT 0")
     # migration: older DBs may lack these national_parks columns
     cols = table_columns(conn, "national_parks")
     if "booklet_url" not in cols:
@@ -1547,6 +1550,11 @@ def add_curriculum_material(title, subject, kind, file_path, url, notes):
 
 def delete_curriculum_material(material_id):
     conn.execute("DELETE FROM curriculum_materials WHERE id = ?", (material_id,))
+    conn.commit()
+
+
+def mark_curriculum_materials_seen():
+    conn.execute("UPDATE curriculum_materials SET seen = 1 WHERE seen = 0 OR seen IS NULL")
     conn.commit()
 
 
@@ -2486,7 +2494,8 @@ def render_resources_tab(parent_mode):
                 with st.container(border=True):
                     c1, c2 = st.columns([5, 1])
                     with c1:
-                        st.markdown(f"**{m['title']}**")
+                        badge = " 🆕" if not m["seen"] else ""
+                        st.markdown(f"**{m['title']}**{badge}")
                         if m["notes"]:
                             st.caption(m["notes"])
                         if m["kind"] == "photo" and m["file_path"]:
@@ -3586,6 +3595,22 @@ if not parent_mode:
     if student_id is None:
         st.stop()
     st.title(f"Hi {student_row['name']}! 👋")
+
+    _unseen_materials = get_curriculum_materials()
+    _unseen_materials = _unseen_materials[_unseen_materials["seen"] == 0] \
+        if not _unseen_materials.empty else _unseen_materials
+    if not _unseen_materials.empty:
+        n = len(_unseen_materials)
+        st.warning(f"📎 {n} new resource{'s' if n != 1 else ''} added for you — "
+                   "check them out below.")
+        with st.expander("See what's new", expanded=True):
+            for _, m in _unseen_materials.iterrows():
+                st.markdown(f"**{m['title']}** ({m['subject'] or 'Uncategorized'})")
+                if m["notes"]:
+                    st.caption(m["notes"])
+            if st.button("Got it — mark as seen"):
+                mark_curriculum_materials_seen()
+                st.rerun()
 
     KEY_DATES = {
         date(2026, 9, 15): "📌 Declaration of Intent due",
