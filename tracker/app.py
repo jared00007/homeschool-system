@@ -427,6 +427,7 @@ DEFAULT_FUN_PROJECTS = [
 # mess_level kept "Low" throughout, per the parent's cleanup concern.
 LANDON_FUN_PROJECT_SEEDS = [
     {"title": "YouTube Short Studio", "subjects": "Writing, Occupational Education",
+     "icon": "🎬",
      "description": "Script, film, and edit a short-form video start to finish.",
      "steps": "Pick a topic and write a 1-paragraph idea.\n"
               "Write a short script (what you'll say, in order).\n"
@@ -435,6 +436,7 @@ LANDON_FUN_PROJECT_SEEDS = [
               "Watch it back once before calling it done.",
      "mess_level": "Low", "est_hours": 2.0},
     {"title": "Comic Book Studio", "subjects": "Writing, Art & Music Appreciation",
+     "icon": "📖",
      "description": "One comic page, done slowly and completely instead of rushed.",
      "steps": "Idea: write one sentence describing the page's story beat.\n"
               "Thumbnail: tiny, rough panel layout sketch — no detail yet.\n"
@@ -443,6 +445,7 @@ LANDON_FUN_PROJECT_SEEDS = [
               "Color: every panel gets color — no page is done until color is finished.",
      "mess_level": "Low", "est_hours": 2.0},
     {"title": "Lego Math Challenge", "subjects": "Mathematics",
+     "icon": "🧱",
      "description": "Use Lego bricks to physically model a math concept "
                     "(area/volume, ratios, fractions via studs).",
      "steps": "Pick a concept (area, volume, ratio, or fractions).\n"
@@ -452,6 +455,7 @@ LANDON_FUN_PROJECT_SEEDS = [
      "mess_level": "Low", "est_hours": 1.0},
     {"title": "Design Your Own Game Level",
      "subjects": "Occupational Education, Art & Music Appreciation",
+     "icon": "🎮",
      "description": "Design (on paper or in a free tool) one level/map for a "
                     "game idea — layout, rules, objective.",
      "steps": "Pick the kind of game (platformer, puzzle, etc).\n"
@@ -1432,6 +1436,8 @@ def get_conn():
         conn.execute("ALTER TABLE fun_project_pool ADD COLUMN mess_level TEXT DEFAULT 'Low'")
     if "est_hours" not in cols:
         conn.execute("ALTER TABLE fun_project_pool ADD COLUMN est_hours REAL DEFAULT 1.0")
+    if "icon" not in cols:
+        conn.execute("ALTER TABLE fun_project_pool ADD COLUMN icon TEXT DEFAULT '🗺️'")
     cols = table_columns(conn, "student_fun_projects")
     if "subjects" not in cols:
         conn.execute("ALTER TABLE student_fun_projects ADD COLUMN subjects TEXT")
@@ -1442,6 +1448,8 @@ def get_conn():
         conn.execute("ALTER TABLE student_fun_projects ADD COLUMN est_hours REAL DEFAULT 1.0")
     if "hours_logged" not in cols:
         conn.execute("ALTER TABLE student_fun_projects ADD COLUMN hours_logged INTEGER DEFAULT 0")
+    if "icon" not in cols:
+        conn.execute("ALTER TABLE student_fun_projects ADD COLUMN icon TEXT DEFAULT '🗺️'")
     cols = table_columns(conn, "student_books")
     if "finished_at" not in cols:
         conn.execute("ALTER TABLE student_books ADD COLUMN finished_at TEXT")
@@ -1477,10 +1485,17 @@ def get_conn():
     for proj in LANDON_FUN_PROJECT_SEEDS:
         if proj["title"] not in _existing_titles:
             conn.execute("""INSERT INTO fun_project_pool
-                (title, subjects, subject, description, steps, mess_level, est_hours)
-                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (title, subjects, subject, description, steps, mess_level, est_hours, icon)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (proj["title"], proj["subjects"], proj["subjects"].split(",")[0].strip(),
-                 proj["description"], proj["steps"], proj["mess_level"], proj["est_hours"]))
+                 proj["description"], proj["steps"], proj["mess_level"], proj["est_hours"],
+                 proj["icon"]))
+        else:
+            # Row already existed from before the icon column was added —
+            # backfill just the icon rather than skipping it entirely.
+            conn.execute(
+                "UPDATE fun_project_pool SET icon = ? WHERE title = ? AND icon = '🗺️'",
+                (proj["icon"], proj["title"]))
     if conn.execute("SELECT COUNT(*) FROM national_parks").fetchone()[0] == 0:
         for name, state, lat, lon, region in DEFAULT_NATIONAL_PARKS:
             conn.execute("""INSERT INTO national_parks (name, state, lat, lon, region)
@@ -1717,29 +1732,30 @@ def get_fun_project_pool_df():
     return pd.read_sql("SELECT * FROM fun_project_pool ORDER BY subject, title", conn)
 
 
-def add_fun_project_pool_option(title, subjects, description, steps, mess_level, est_hours):
+def add_fun_project_pool_option(title, subjects, description, steps, mess_level, est_hours,
+                                 icon):
     try:
         est_hours = float(est_hours)
     except (TypeError, ValueError):
         est_hours = 1.0
     conn.execute("""INSERT INTO fun_project_pool
-        (title, subjects, subject, description, steps, mess_level, est_hours)
-        VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (title, subjects, subject, description, steps, mess_level, est_hours, icon)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         (title, subjects, (subjects or "").split(",")[0].strip(),
-         description, steps, mess_level or "Low", est_hours))
+         description, steps, mess_level or "Low", est_hours, icon or "🗺️"))
     conn.commit()
 
 
 def update_fun_project_pool_option(option_id, title, subjects, description, steps,
-                                    mess_level, est_hours):
+                                    mess_level, est_hours, icon):
     try:
         est_hours = float(est_hours)
     except (TypeError, ValueError):
         est_hours = 1.0
     conn.execute("""UPDATE fun_project_pool SET title = ?, subjects = ?, subject = ?,
-        description = ?, steps = ?, mess_level = ?, est_hours = ? WHERE id = ?""",
+        description = ?, steps = ?, mess_level = ?, est_hours = ?, icon = ? WHERE id = ?""",
         (title, subjects, (subjects or "").split(",")[0].strip(),
-         description, steps, mess_level or "Low", est_hours, option_id))
+         description, steps, mess_level or "Low", est_hours, icon or "🗺️", option_id))
     conn.commit()
 
 
@@ -1924,13 +1940,14 @@ def get_student_fun_projects(student_id, school_year):
 
 
 def add_student_fun_project(student_id, school_year, title, subjects, description,
-                             steps=None, est_hours=1.0):
+                             steps=None, est_hours=1.0, icon="🗺️"):
     conn.execute("""INSERT INTO student_fun_projects
         (student_id, school_year, title, subject, subjects, description, steps,
-         est_hours, status, selected_date)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?)""",
+         est_hours, icon, status, selected_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?)""",
         (student_id, school_year, title, (subjects or "").split(",")[0].strip(),
-         subjects, description, steps, est_hours, date.today().isoformat()))
+         subjects, description, steps, est_hours, icon or "🗺️",
+         date.today().isoformat()))
     conn.commit()
 
 
@@ -1944,6 +1961,11 @@ def update_fun_project_status(project_id, status):
 
 def parse_steps(steps_text):
     return [s.strip() for s in (steps_text or "").split("\n") if s.strip()]
+
+
+def mess_badge(mess_level):
+    return {"Low": "🧼 Low mess", "Medium": "🧽 Medium mess",
+           "High": "💦 High mess"}.get(mess_level, "🧼 Low mess")
 
 
 def finish_fun_project(project_id, student_id, title, subjects_str, est_hours):
@@ -2642,43 +2664,73 @@ def render_fun_projects_picker(student_id, school_year, key_prefix):
     st.caption("A backlog of bigger real-world projects for the school year — "
                "pick what sounds interesting, not all of them need to get done. "
                "Finishing one sends the hours to a parent for approval automatically.")
+
     mine = get_student_fun_projects(student_id, school_year)
     my_titles = list(mine["title"]) if not mine.empty else []
+    active = mine[mine["status"] == "in_progress"] if not mine.empty else mine
+    queued = mine[mine["status"] == "planned"] if not mine.empty else mine
+    finished = mine[mine["status"] == "finished"] if not mine.empty else mine
+    total_hours = finished["est_hours"].fillna(1.0).sum() if not finished.empty else 0.0
 
-    if not mine.empty:
-        st.markdown("**My projects:**")
-        for _, p in mine.iterrows():
+    m1, m2, m3 = st.columns(3)
+    m1.metric("🏆 Quests Completed", len(finished))
+    m2.metric("⚔️ Hours Earned", f"{total_hours:.1f}")
+    m3.metric("📜 In Progress", len(active))
+    st.divider()
+
+    if not active.empty:
+        st.markdown("### ⚔️ Active Quest" + ("s" if len(active) > 1 else ""))
+        for _, p in active.iterrows():
             with st.container(border=True):
-                pc1, pc2, pc3 = st.columns([3, 1.3, 1])
-                with pc1:
-                    st.markdown(f"**{p['title']}** — {p['subjects'] or p['subject']}")
-                    st.caption(p["description"])
+                ac1, ac2 = st.columns([4, 1.4])
+                with ac1:
+                    st.markdown(f"#### {p['icon'] or '🗺️'} {p['title']}")
+                    st.caption(f"{p['subjects'] or p['subject']} · "
+                              f"⏱️ ~{p['est_hours'] or 1.0} hrs")
+                    st.write(p["description"])
                     steps = parse_steps(p["steps"])
                     if steps:
                         with st.expander("📋 Steps"):
                             for i, s in enumerate(steps, 1):
                                 st.markdown(f"{i}. {s}")
-                with pc2:
-                    opts = ["planned", "in_progress", "finished"]
-                    new_status = st.selectbox(
-                        "Status", opts, index=opts.index(p["status"]),
-                        key=f"{key_prefix}_proj_status_{p['id']}",
-                        label_visibility="collapsed")
-                    if new_status != p["status"]:
-                        if new_status == "finished":
-                            finish_fun_project(int(p["id"]), student_id, p["title"],
-                                               p["subjects"] or p["subject"],
-                                               p["est_hours"] or 1.0)
-                            st.success("Nice work! Hours sent to your parent for approval.")
-                        else:
-                            update_fun_project_status(int(p["id"]), new_status)
+                with ac2:
+                    if st.button("🏆 Complete Quest", key=f"{key_prefix}_proj_finish_{p['id']}",
+                                type="primary", use_container_width=True):
+                        finish_fun_project(int(p["id"]), student_id, p["title"],
+                                          p["subjects"] or p["subject"], p["est_hours"] or 1.0)
+                        st.success("Quest complete! Sent to your parent for approval.")
                         st.rerun()
-                with pc3:
-                    if st.button("Remove", key=f"{key_prefix}_proj_del_{p['id']}"):
+                    if st.button("⏸️ Pause", key=f"{key_prefix}_proj_pause_{p['id']}",
+                                use_container_width=True):
+                        update_fun_project_status(int(p["id"]), "planned")
+                        st.rerun()
+                    if st.button("🗑️ Remove", key=f"{key_prefix}_proj_del_{p['id']}",
+                                use_container_width=True):
                         delete_student_fun_project(int(p["id"]))
                         st.rerun()
+        st.divider()
 
-    st.markdown("**Pick from the idea pool:**")
+    if not queued.empty:
+        st.markdown("### 📜 Queued Quests")
+        for _, p in queued.iterrows():
+            with st.container(border=True):
+                qc1, qc2 = st.columns([4, 1.4])
+                with qc1:
+                    st.markdown(f"**{p['icon'] or '🗺️'} {p['title']}** — "
+                               f"{p['subjects'] or p['subject']}")
+                    st.caption(p["description"])
+                with qc2:
+                    if st.button("▶️ Start Quest", key=f"{key_prefix}_proj_start_{p['id']}",
+                                type="primary", use_container_width=True):
+                        update_fun_project_status(int(p["id"]), "in_progress")
+                        st.rerun()
+                    if st.button("🗑️ Remove", key=f"{key_prefix}_proj_qdel_{p['id']}",
+                                use_container_width=True):
+                        delete_student_fun_project(int(p["id"]))
+                        st.rerun()
+        st.divider()
+
+    st.markdown("### 🗺️ Available Quests")
     pool = get_fun_project_pool_df()
     tag_map = {}
     for _, proj in pool.iterrows():
@@ -2687,22 +2739,33 @@ def render_fun_projects_picker(student_id, school_year, key_prefix):
         for tag in tags:
             tag_map.setdefault(tag, []).append(proj)
     for subj in sorted(tag_map):
-        with st.expander(subj):
-            for proj in tag_map[subj]:
-                if proj["title"] in my_titles:
-                    continue
-                with st.container(border=True):
-                    bc1, bc2 = st.columns([4, 1])
-                    with bc1:
-                        st.markdown(f"**{proj['title']}**")
-                        st.caption(proj["description"])
-                    with bc2:
-                        if st.button("Add", key=f"{key_prefix}_proj_add_{proj['id']}_{subj}"):
+        available = [p for p in tag_map[subj] if p["title"] not in my_titles]
+        if not available:
+            continue
+        with st.expander(f"{subj} ({len(available)})"):
+            cols = st.columns(2)
+            for i, proj in enumerate(available):
+                with cols[i % 2]:
+                    with st.container(border=True):
+                        st.markdown(f"#### {proj['icon'] or '🗺️'} {proj['title']}")
+                        st.caption(f"{mess_badge(proj['mess_level'])} · "
+                                  f"⏱️ ~{proj['est_hours'] or 1.0} hrs")
+                        st.write(proj["description"])
+                        if st.button("➕ Add to My Quests",
+                                    key=f"{key_prefix}_proj_add_{proj['id']}_{subj}",
+                                    use_container_width=True):
                             add_student_fun_project(
                                 student_id, school_year, proj["title"],
                                 proj["subjects"] or proj["subject"], proj["description"],
-                                proj["steps"], proj["est_hours"] or 1.0)
+                                proj["steps"], proj["est_hours"] or 1.0, proj["icon"])
                             st.rerun()
+
+    if not finished.empty:
+        st.divider()
+        with st.expander(f"🏆 Trophy Case ({len(finished)} completed)"):
+            for _, p in finished.sort_values("finished_date", ascending=False).iterrows():
+                st.markdown(f"{p['icon'] or '🗺️'} **{p['title']}** — "
+                           f"finished {fmt_date(p['finished_date'])}")
 
 
 def render_fun_project_pool_admin():
@@ -2718,7 +2781,8 @@ def render_fun_project_pool_admin():
          ("description", "Description", "textarea"),
          ("steps", "Steps (one per line — leave blank for open-ended)", "textarea"),
          ("mess_level", "Mess level", ["Low", "Medium", "High"]),
-         ("est_hours", "Estimated hours (e.g. 1.0, 2.5)", "text")],
+         ("est_hours", "Estimated hours (e.g. 1.0, 2.5)", "text"),
+         ("icon", "Icon (a single emoji, e.g. 🎬 or 🧱)", "text")],
         add_fun_project_pool_option, update_fun_project_pool_option,
         delete_fun_project_pool_option, key_prefix="funpool",
         expander_label_fn=lambda row: f"{row['title']} "
@@ -4009,7 +4073,8 @@ if not parent_mode:
         active_quest = get_active_fun_project(student_id, today_school_year)
         if active_quest is not None:
             with st.container(border=True):
-                st.markdown(f"🗺️ **Current Quest: {active_quest['title']}**")
+                st.markdown(f"### {active_quest['icon'] or '🗺️'} "
+                           f"Current Quest: {active_quest['title']}")
                 st.caption(active_quest["description"])
                 steps = parse_steps(active_quest["steps"])
                 if steps:
