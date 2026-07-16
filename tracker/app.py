@@ -4015,6 +4015,9 @@ button[kind="primary"]:hover, button[kind="secondary"]:hover {
 .st-key-nav_learning button[kind="primary"] { background: #6FCF7A !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
 .st-key-nav_extras button[kind="secondary"] { background: #FCD3E6 !important; color: #1A1610 !important; }
 .st-key-nav_extras button[kind="primary"] { background: #FF5FA2 !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
+.st-key-nav_more button[kind="secondary"] { background: #E3D3F9 !important; color: #1A1610 !important; }
+.st-key-nav_more button[kind="primary"] { background: #B084F0 !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
+[data-testid="stSidebar"] .stButton button { margin-bottom: 2px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -4059,6 +4062,36 @@ with st.sidebar:
         student_id = None
         student_row = None
         st.info("No student yet — add one in Parent mode.")
+
+    if mode == "🎒 Student":
+        if "student_view" not in st.session_state:
+            st.session_state.student_view = "Today"
+
+        def _nav_group(label, items, key):
+            st.markdown(f'<div style="font-size:10.5px;font-weight:800;letter-spacing:.08em;'
+                       f'text-transform:uppercase;color:#16354022;margin:10px 0 5px">{label}</div>',
+                       unsafe_allow_html=True)
+            with st.container(key=key):
+                for view_label, icon in items:
+                    is_on = st.session_state.student_view == view_label
+                    if st.button(f"{icon} {view_label}", key=f"{key}_{view_label}",
+                                use_container_width=True,
+                                type="primary" if is_on else "secondary"):
+                        st.session_state.student_view = view_label
+                        st.rerun()
+
+        _nav_group("📅 Schedule & Quests", [
+            ("Today", "📅"), ("My Week", "🗓"), ("Calendar", "📆"), ("Quest Board", "🗺️")],
+            "nav_schedule")
+        _nav_group("🎯 Learning", [
+            ("Electives & Books", "🎯"), ("Quizzes", "📝"), ("My Grades", "🏆")],
+            "nav_learning")
+        _nav_group("🧳 Extras", [
+            ("Travel Log", "🧳"), ("Resources", "📎")],
+            "nav_extras")
+        _nav_group("⋯ More", [
+            ("Day 1 Checklist", "🚀"), ("8th Grade Scope", "📋"), ("My Logins", "🔑")],
+            "nav_more")
 
     if mode == "🔑 Parent":
         with st.expander("➕ Add a student"):
@@ -4186,44 +4219,6 @@ if not parent_mode:
                             st.rerun()
         st.progress(done_ct / len(blocks),
                     text=f"{done_ct} / {len(blocks)} blocks logged")
-
-    if "student_view" not in st.session_state:
-        st.session_state.student_view = "Today"
-
-    def _nav_group(label, items, key):
-        st.markdown(f'<div style="font-size:10.5px;font-weight:800;letter-spacing:.08em;'
-                   f'text-transform:uppercase;color:#8a7f68;margin:8px 0 4px">{label}</div>',
-                   unsafe_allow_html=True)
-        with st.container(key=key):
-            cols = st.columns(len(items))
-            for col, (view_label, icon) in zip(cols, items):
-                with col:
-                    is_on = st.session_state.student_view == view_label
-                    if st.button(f"{icon} {view_label}", key=f"{key}_{view_label}",
-                                use_container_width=True,
-                                type="primary" if is_on else "secondary"):
-                        st.session_state.student_view = view_label
-                        st.rerun()
-
-    _nav_group("📅 Schedule & Quests", [
-        ("Today", "📅"), ("My Week", "🗓"), ("Calendar", "📆"), ("Quest Board", "🗺️")],
-        "nav_schedule")
-    _nav_group("🎯 Learning", [
-        ("Electives & Books", "🎯"), ("Quizzes", "📝"), ("My Grades", "🏆")],
-        "nav_learning")
-    _nav_group("🧳 Extras", [
-        ("Travel Log", "🧳"), ("Resources", "📎")],
-        "nav_extras")
-
-    with st.popover("⋯ More"):
-        for view_label, icon in [("Day 1 Checklist", "🚀"), ("8th Grade Scope", "📋"),
-                                 ("My Logins", "🔑")]:
-            if st.button(f"{icon} {view_label}", key=f"nav_more_{view_label}",
-                        use_container_width=True):
-                st.session_state.student_view = view_label
-                st.rerun()
-
-    st.divider()
 
     if st.session_state.student_view == "Day 1 Checklist":
         school_year = student_row["school_year"] or "current"
