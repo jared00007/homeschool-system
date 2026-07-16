@@ -116,7 +116,8 @@ CURRICULUM_RESOURCES = {
                      "this block, whichever comes first.",
                      "Missed a problem? Read the hint or \"explain\" article "
                      "before trying again — don't just guess.",
-                     "When the block is over, click \"Done ✔\" below."]),
+                     "When the block is over, click \"✅ Done, got it\" below — "
+                     "or \"😕 Done, still fuzzy\" if it didn't quite click."]),
     "Reading": ("CommonLit / library book",
                 "https://www.commonlit.org/",
                 "Passage + questions, or independent reading. Supplement 2x/week "
@@ -130,7 +131,8 @@ CURRICULUM_RESOURCES = {
                  "and keep track of what page you stopped on.",
                  "Twice a week, spend this block on Vocabulary.com instead of "
                  "a passage/book — ask a parent which days.",
-                 "Click \"Done ✔\" below when the block is finished."]),
+                 "Click \"✅ Done, got it\" below when the block is finished — "
+                 "or \"😕 Done, still fuzzy\" if it didn't quite click."]),
     "Writing": ("ReadWorks prompts + journal",
                 "https://www.readworks.org/",
                 "One structured piece weekly; parent reviews. Supplement 2x/week "
@@ -147,7 +149,8 @@ CURRICULUM_RESOURCES = {
                  "Twice a week, use this block for Khan Academy Grammar "
                  "instead (same login) — ask a parent which days.",
                  "Leave your writing somewhere a parent can see it, then click "
-                 "\"Done ✔\" below."]),
+                 "\"✅ Done, got it\" below — or \"😕 Done, still fuzzy\" if "
+                 "it didn't quite click."]),
     "Science": ("CK-12 FlexBooks",
                 "https://www.ck12.org/student/",
                 "Read the chapter, do the adaptive practice.",
@@ -158,7 +161,8 @@ CURRICULUM_RESOURCES = {
                  "Do the adaptive practice questions at the end of the section.",
                  "If a concept still doesn't make sense after the practice, "
                  "write down the question to ask a parent later.",
-                 "Click \"Done ✔\" below when finished."]),
+                 "Click \"✅ Done, got it\" below when finished — or \"😕 Done, still "
+                "fuzzy\" if it didn't quite click."]),
     "Social Studies": ("Khan Academy — Civics/Economics",
                        "https://www.khanacademy.org/economics-finance-domain",
                        "Civics and economics units.",
@@ -166,7 +170,8 @@ CURRICULUM_RESOURCES = {
                         "Economics unit you're currently working through.",
                         "Watch the lesson video first, then do the practice set.",
                         "Complete at least one full lesson this block.",
-                        "Click \"Done ✔\" below when finished."]),
+                        "Click \"✅ Done, got it\" below when finished — or \"😕 Done, still "
+                "fuzzy\" if it didn't quite click."]),
     "History": ("Khan Academy US History + Crash Course",
                 "https://www.khanacademy.org/humanities/us-history",
                 "Khan for structure; Crash Course as supplement.",
@@ -174,7 +179,8 @@ CURRICULUM_RESOURCES = {
                  "complete one full lesson (video + practice).",
                  "If you finish early, search YouTube for the matching Crash "
                  "Course US History episode on the same topic — good extra context.",
-                 "Click \"Done ✔\" below when finished."]),
+                 "Click \"✅ Done, got it\" below when finished — or \"😕 Done, still "
+                "fuzzy\" if it didn't quite click."]),
     "Health": ("CDC BAM! Body & Mind",
                "https://www.cdc.gov/bam/index.html",
                "Short weekly unit — nutrition, first aid, fitness.",
@@ -184,7 +190,8 @@ CURRICULUM_RESOURCES = {
                 "These units are quick — use any leftover time on an actual "
                 "healthy habit (a short walk, planning a healthy meal, etc.) "
                 "and jot down what you did.",
-                "Click \"Done ✔\" below when finished."]),
+                "Click \"✅ Done, got it\" below when finished — or \"😕 Done, still "
+                "fuzzy\" if it didn't quite click."]),
     "Art & Music Appreciation": ("Khan Academy Art/Music + museum stops",
                                  "https://www.khanacademy.org/humanities/music",
                                  "Museum visits count — log them as field trips.",
@@ -193,7 +200,8 @@ CURRICULUM_RESOURCES = {
                                   "If a museum, gallery, or concert happened this "
                                   "week, that counts instead — tell a parent so "
                                   "they can log it as a field trip.",
-                                  "Click \"Done ✔\" below when finished."]),
+                                  "Click \"✅ Done, got it\" below when finished — or \"😕 Done, still "
+                "fuzzy\" if it didn't quite click."]),
     "Occupational Education": ("Life skills / careers",
                                "https://www.khanacademy.org/college-careers-more",
                                "Budgeting, careers, or shadowing a parent's work.",
@@ -202,14 +210,16 @@ CURRICULUM_RESOURCES = {
                                 "Or, if you're helping/shadowing a parent's work "
                                 "task today, that counts instead — jot down what "
                                 "you learned.",
-                                "Click \"Done ✔\" below when finished."]),
+                                "Click \"✅ Done, got it\" below when finished — or \"😕 Done, still "
+                "fuzzy\" if it didn't quite click."]),
     "Electives": ("Duolingo Spanish / coding",
                   "https://www.duolingo.com/",
                   "Flexible slot — follow his interest.",
                   ["Open whichever elective you've picked (see 🎯 Electives & "
                    "Books for your choices).",
                    "Do one full lesson or session — aim for 15-20 focused minutes.",
-                   "Click \"Done ✔\" below when finished."]),
+                   "Click \"✅ Done, got it\" below when finished — or \"😕 Done, still "
+                "fuzzy\" if it didn't quite click."]),
 }
 
 MAX_ELECTIVES = 2
@@ -693,7 +703,8 @@ DAY1_MANUAL_ITEMS = [
     {"key": "day1_schedule", "label": "I looked over my Weekly Schedule",
      "help": "Check the 🗓 My Week tab so you know what's coming each day."},
     {"key": "day1_mark_done", "label": "I know how to mark a block as Done",
-     "help": "On the 📅 Today tab, click \"Done ✔\" next to a subject once you "
+     "help": "On the 📅 Today tab, click \"✅ Done, got it\" (or \"😕 Done, "
+             "still fuzzy\" if it didn't click) next to a subject once you "
              "finish it — that sends it to a parent for approval."},
     {"key": "day1_quizzes", "label": "I found my Quizzes tab",
      "help": "📝 Quizzes tests what you've learned and saves your score "
@@ -3758,14 +3769,17 @@ if not parent_mode:
                                     st.markdown(f"{i}. {step}")
                 with c2:
                     if status is None and allow_marking:
-                        struggled = st.checkbox(
-                            "I struggled / still don't get it",
-                            key=f"{key_prefix}_struggle_{d.isoformat()}_{subject}_{start}")
-                        if st.button("Done ✔",
+                        if st.button("✅ Done, got it",
                                      key=f"{key_prefix}_{d.isoformat()}_{subject}_{start}"):
                             add_entry(student_id, d, subject, block_hours(start, end),
                                       f"Completed via {done_label}", "Instruction", "pending",
-                                      struggled=struggled)
+                                      struggled=False)
+                            st.rerun()
+                        if st.button("😕 Done, still fuzzy",
+                                     key=f"{key_prefix}_fuzzy_{d.isoformat()}_{subject}_{start}"):
+                            add_entry(student_id, d, subject, block_hours(start, end),
+                                      f"Completed via {done_label}", "Instruction", "pending",
+                                      struggled=True)
                             st.rerun()
         st.progress(done_ct / len(blocks),
                     text=f"{done_ct} / {len(blocks)} blocks logged")
