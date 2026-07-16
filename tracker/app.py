@@ -421,6 +421,46 @@ DEFAULT_FUN_PROJECTS = [
                     "— genuine project management."},
 ]
 
+# Starter Quest Log projects built around Landon's actual interests (games,
+# YouTube, comics, Legos) — added incrementally below rather than in the
+# COUNT(*)==0 seed block above, since the pool is already populated.
+# mess_level kept "Low" throughout, per the parent's cleanup concern.
+LANDON_FUN_PROJECT_SEEDS = [
+    {"title": "YouTube Short Studio", "subjects": "Writing, Occupational Education",
+     "description": "Script, film, and edit a short-form video start to finish.",
+     "steps": "Pick a topic and write a 1-paragraph idea.\n"
+              "Write a short script (what you'll say, in order).\n"
+              "Film it — multiple takes are fine.\n"
+              "Edit it into one final cut.\n"
+              "Watch it back once before calling it done.",
+     "mess_level": "Low", "est_hours": 2.0},
+    {"title": "Comic Book Studio", "subjects": "Writing, Art & Music Appreciation",
+     "description": "One comic page, done slowly and completely instead of rushed.",
+     "steps": "Idea: write one sentence describing the page's story beat.\n"
+              "Thumbnail: tiny, rough panel layout sketch — no detail yet.\n"
+              "Full pencils: draw the real panels, take your time.\n"
+              "Ink: trace your pencils in pen.\n"
+              "Color: every panel gets color — no page is done until color is finished.",
+     "mess_level": "Low", "est_hours": 2.0},
+    {"title": "Lego Math Challenge", "subjects": "Mathematics",
+     "description": "Use Lego bricks to physically model a math concept "
+                    "(area/volume, ratios, fractions via studs).",
+     "steps": "Pick a concept (area, volume, ratio, or fractions).\n"
+              "Build a physical example with Lego.\n"
+              "Write down the math it demonstrates.\n"
+              "Explain it out loud to a parent.",
+     "mess_level": "Low", "est_hours": 1.0},
+    {"title": "Design Your Own Game Level",
+     "subjects": "Occupational Education, Art & Music Appreciation",
+     "description": "Design (on paper or in a free tool) one level/map for a "
+                    "game idea — layout, rules, objective.",
+     "steps": "Pick the kind of game (platformer, puzzle, etc).\n"
+              "Sketch the level layout on paper.\n"
+              "Write the rules/objective in your own words.\n"
+              "Describe it to a parent like you're pitching it.",
+     "mess_level": "Low", "est_hours": 1.5},
+]
+
 # Seed data for the national_parks pool — the 63 congressionally-designated
 # U.S. National Parks, with state and approximate visitor-center coordinates
 # for the map view. Junior Ranger programs exist at nearly every NPS site;
@@ -1153,6 +1193,17 @@ WEEKLY_SCHEDULE = {
                ("Electives", "11:30", "13:30")],
 }
 
+# Student-facing quest names — display only, never touches the underlying
+# `subject` value used for hours/compliance tracking. Parent mode keeps
+# showing real subject names (render_day_blocks only runs in Student mode).
+QUEST_TITLES = {
+    "Mathematics": "⚔️ Math Quest", "Reading": "📖 Story Quest",
+    "Writing": "✍️ Word Smith", "Science": "🔬 Lab Mission",
+    "Social Studies": "🏛️ Civics Quest", "History": "📜 History Quest",
+    "Health": "🛡️ Wellness Quest", "Occupational Education": "💼 Life Skills Quest",
+    "Art & Music Appreciation": "🎨 Creative Studio", "Electives": "🎮 Bonus Round",
+}
+
 PLANNED_HOURS = {
     "Mathematics": 6.0, "Reading": 4.0, "Writing": 2.0, "Science": 4.0,
     "Social Studies": 2.5, "History": 2.5, "Health": 0.75,
@@ -1370,6 +1421,27 @@ def get_conn():
     cols = table_columns(conn, "student_fun_projects")
     if "finished_at" not in cols:
         conn.execute("ALTER TABLE student_fun_projects ADD COLUMN finished_at TEXT")
+    # migration: multi-subject projects that actually log hours (Quest Log redesign)
+    cols = table_columns(conn, "fun_project_pool")
+    if "subjects" not in cols:
+        conn.execute("ALTER TABLE fun_project_pool ADD COLUMN subjects TEXT")
+        conn.execute("UPDATE fun_project_pool SET subjects = subject WHERE subjects IS NULL")
+    if "steps" not in cols:
+        conn.execute("ALTER TABLE fun_project_pool ADD COLUMN steps TEXT")
+    if "mess_level" not in cols:
+        conn.execute("ALTER TABLE fun_project_pool ADD COLUMN mess_level TEXT DEFAULT 'Low'")
+    if "est_hours" not in cols:
+        conn.execute("ALTER TABLE fun_project_pool ADD COLUMN est_hours REAL DEFAULT 1.0")
+    cols = table_columns(conn, "student_fun_projects")
+    if "subjects" not in cols:
+        conn.execute("ALTER TABLE student_fun_projects ADD COLUMN subjects TEXT")
+        conn.execute("UPDATE student_fun_projects SET subjects = subject WHERE subjects IS NULL")
+    if "steps" not in cols:
+        conn.execute("ALTER TABLE student_fun_projects ADD COLUMN steps TEXT")
+    if "est_hours" not in cols:
+        conn.execute("ALTER TABLE student_fun_projects ADD COLUMN est_hours REAL DEFAULT 1.0")
+    if "hours_logged" not in cols:
+        conn.execute("ALTER TABLE student_fun_projects ADD COLUMN hours_logged INTEGER DEFAULT 0")
     cols = table_columns(conn, "student_books")
     if "finished_at" not in cols:
         conn.execute("ALTER TABLE student_books ADD COLUMN finished_at TEXT")
@@ -1397,6 +1469,18 @@ def get_conn():
             conn.execute("""INSERT INTO fun_project_pool (title, subject, description)
                 VALUES (?, ?, ?)""",
                 (proj["title"], proj["subject"], proj["description"]))
+    # Quest Log starter projects, added incrementally (unlike the seed block
+    # above, this runs every startup and only inserts titles not already
+    # present) since fun_project_pool may already be populated from before.
+    _existing_titles = {r[0] for r in
+        conn.execute("SELECT title FROM fun_project_pool").fetchall()}
+    for proj in LANDON_FUN_PROJECT_SEEDS:
+        if proj["title"] not in _existing_titles:
+            conn.execute("""INSERT INTO fun_project_pool
+                (title, subjects, subject, description, steps, mess_level, est_hours)
+                VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (proj["title"], proj["subjects"], proj["subjects"].split(",")[0].strip(),
+                 proj["description"], proj["steps"], proj["mess_level"], proj["est_hours"]))
     if conn.execute("SELECT COUNT(*) FROM national_parks").fetchone()[0] == 0:
         for name, state, lat, lon, region in DEFAULT_NATIONAL_PARKS:
             conn.execute("""INSERT INTO national_parks (name, state, lat, lon, region)
@@ -1633,15 +1717,29 @@ def get_fun_project_pool_df():
     return pd.read_sql("SELECT * FROM fun_project_pool ORDER BY subject, title", conn)
 
 
-def add_fun_project_pool_option(title, subject, description):
-    conn.execute("""INSERT INTO fun_project_pool (title, subject, description)
-        VALUES (?, ?, ?)""", (title, subject, description))
+def add_fun_project_pool_option(title, subjects, description, steps, mess_level, est_hours):
+    try:
+        est_hours = float(est_hours)
+    except (TypeError, ValueError):
+        est_hours = 1.0
+    conn.execute("""INSERT INTO fun_project_pool
+        (title, subjects, subject, description, steps, mess_level, est_hours)
+        VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (title, subjects, (subjects or "").split(",")[0].strip(),
+         description, steps, mess_level or "Low", est_hours))
     conn.commit()
 
 
-def update_fun_project_pool_option(option_id, title, subject, description):
-    conn.execute("""UPDATE fun_project_pool SET title = ?, subject = ?,
-        description = ? WHERE id = ?""", (title, subject, description, option_id))
+def update_fun_project_pool_option(option_id, title, subjects, description, steps,
+                                    mess_level, est_hours):
+    try:
+        est_hours = float(est_hours)
+    except (TypeError, ValueError):
+        est_hours = 1.0
+    conn.execute("""UPDATE fun_project_pool SET title = ?, subjects = ?, subject = ?,
+        description = ?, steps = ?, mess_level = ?, est_hours = ? WHERE id = ?""",
+        (title, subjects, (subjects or "").split(",")[0].strip(),
+         description, steps, mess_level or "Low", est_hours, option_id))
     conn.commit()
 
 
@@ -1825,21 +1923,59 @@ def get_student_fun_projects(student_id, school_year):
                        params=[student_id, school_year])
 
 
-def add_student_fun_project(student_id, school_year, title, subject, description):
+def add_student_fun_project(student_id, school_year, title, subjects, description,
+                             steps=None, est_hours=1.0):
     conn.execute("""INSERT INTO student_fun_projects
-        (student_id, school_year, title, subject, description, status, selected_date)
-        VALUES (?, ?, ?, ?, ?, 'planned', ?)""",
-        (student_id, school_year, title, subject, description, date.today().isoformat()))
+        (student_id, school_year, title, subject, subjects, description, steps,
+         est_hours, status, selected_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?)""",
+        (student_id, school_year, title, (subjects or "").split(",")[0].strip(),
+         subjects, description, steps, est_hours, date.today().isoformat()))
     conn.commit()
 
 
 def update_fun_project_status(project_id, status):
-    finished = date.today().isoformat() if status == "finished" else None
-    finished_at = (datetime.now().isoformat(timespec="seconds")
-                  if status == "finished" else None)
+    """For planned <-> in_progress transitions only. Use finish_fun_project()
+    when the new status is "finished" — that path also logs hours."""
+    conn.execute("UPDATE student_fun_projects SET status = ? WHERE id = ?",
+                 (status, project_id))
+    conn.commit()
+
+
+def parse_steps(steps_text):
+    return [s.strip() for s in (steps_text or "").split("\n") if s.strip()]
+
+
+def finish_fun_project(project_id, student_id, title, subjects_str, est_hours):
+    """Marks a student_fun_projects row finished and — once, idempotently —
+    splits est_hours evenly across its valid tagged WA subjects into pending
+    log_entries rows for parent approval, same as any schedule-block entry.
+    Falls back to "Occupational Education" if every tag is invalid (e.g. a
+    typo), so hours are never silently dropped from the compliance total."""
+    row = conn.execute("SELECT hours_logged FROM student_fun_projects WHERE id = ?",
+                       (project_id,)).fetchone()
+    already_logged = bool(row and row[0])
+    finished = date.today().isoformat()
+    finished_at = datetime.now().isoformat(timespec="seconds")
     conn.execute("""UPDATE student_fun_projects
-        SET status = ?, finished_date = ?, finished_at = ? WHERE id = ?""",
-        (status, finished, finished_at, project_id))
+        SET status = 'finished', finished_date = ?, finished_at = ? WHERE id = ?""",
+        (finished, finished_at, project_id))
+    if not already_logged:
+        valid = [s.strip() for s in (subjects_str or "").split(",")
+                if s.strip() in WA_SUBJECTS + ["Electives"]]
+        if not valid:
+            valid = ["Occupational Education"]
+        try:
+            est_hours = float(est_hours)
+        except (TypeError, ValueError):
+            est_hours = 1.0
+        per_subject = round(est_hours / len(valid), 2)
+        for subj in valid:
+            add_entry(student_id, date.today(), subj, per_subject,
+                     f"Finished fun project: {title}", "Instruction", "pending",
+                     struggled=False, block_start=None)
+        conn.execute("UPDATE student_fun_projects SET hours_logged = 1 WHERE id = ?",
+                    (project_id,))
     conn.commit()
 
 
@@ -2230,6 +2366,15 @@ def count_finished_fun_projects_in_month(student_id, school_year, year, month):
               if date.fromisoformat(d).year == year and date.fromisoformat(d).month == month)
 
 
+def get_active_fun_project(student_id, school_year):
+    """The most recently picked in_progress project, or None."""
+    df = get_student_fun_projects(student_id, school_year)
+    if df.empty:
+        return None
+    active = df[df["status"] == "in_progress"]
+    return None if active.empty else active.iloc[-1]
+
+
 def _render_electives_picker(student_id, school_year, key_prefix, is_parent=False):
     """Core electives picking UI. Returns True once at least one is selected."""
     elective_pool = get_elective_pool_dict()
@@ -2494,8 +2639,8 @@ def render_scope_reference():
 def render_fun_projects_picker(student_id, school_year, key_prefix):
     """Browse and pick real-world project ideas; track status. Used by both views."""
     st.subheader("🎉 Make It Fun — Real-World Project Ideas")
-    st.caption("Pick a few that sound interesting. These tie to real subjects — "
-               "log finished ones as hours/grades the normal way.")
+    st.caption("Pick a few that sound interesting. Finishing one sends the "
+               "hours to a parent for approval automatically.")
     mine = get_student_fun_projects(student_id, school_year)
     my_titles = list(mine["title"]) if not mine.empty else []
 
@@ -2505,8 +2650,13 @@ def render_fun_projects_picker(student_id, school_year, key_prefix):
             with st.container(border=True):
                 pc1, pc2, pc3 = st.columns([3, 1.3, 1])
                 with pc1:
-                    st.markdown(f"**{p['title']}** — {p['subject']}")
+                    st.markdown(f"**{p['title']}** — {p['subjects'] or p['subject']}")
                     st.caption(p["description"])
+                    steps = parse_steps(p["steps"])
+                    if steps:
+                        with st.expander("📋 Steps"):
+                            for i, s in enumerate(steps, 1):
+                                st.markdown(f"{i}. {s}")
                 with pc2:
                     opts = ["planned", "in_progress", "finished"]
                     new_status = st.selectbox(
@@ -2514,7 +2664,13 @@ def render_fun_projects_picker(student_id, school_year, key_prefix):
                         key=f"{key_prefix}_proj_status_{p['id']}",
                         label_visibility="collapsed")
                     if new_status != p["status"]:
-                        update_fun_project_status(int(p["id"]), new_status)
+                        if new_status == "finished":
+                            finish_fun_project(int(p["id"]), student_id, p["title"],
+                                               p["subjects"] or p["subject"],
+                                               p["est_hours"] or 1.0)
+                            st.success("Nice work! Hours sent to your parent for approval.")
+                        else:
+                            update_fun_project_status(int(p["id"]), new_status)
                         st.rerun()
                 with pc3:
                     if st.button("Remove", key=f"{key_prefix}_proj_del_{p['id']}"):
@@ -2523,10 +2679,15 @@ def render_fun_projects_picker(student_id, school_year, key_prefix):
 
     st.markdown("**Pick from the idea pool:**")
     pool = get_fun_project_pool_df()
-    subjects_in_pool = sorted(pool["subject"].dropna().unique()) if not pool.empty else []
-    for subj in subjects_in_pool:
+    tag_map = {}
+    for _, proj in pool.iterrows():
+        tags = [t.strip() for t in (proj["subjects"] or proj["subject"] or "").split(",")
+               if t.strip()]
+        for tag in tags:
+            tag_map.setdefault(tag, []).append(proj)
+    for subj in sorted(tag_map):
         with st.expander(subj):
-            for _, proj in pool[pool["subject"] == subj].iterrows():
+            for proj in tag_map[subj]:
                 if proj["title"] in my_titles:
                     continue
                 with st.container(border=True):
@@ -2535,10 +2696,11 @@ def render_fun_projects_picker(student_id, school_year, key_prefix):
                         st.markdown(f"**{proj['title']}**")
                         st.caption(proj["description"])
                     with bc2:
-                        if st.button("Add", key=f"{key_prefix}_proj_add_{proj['id']}"):
-                            add_student_fun_project(student_id, school_year,
-                                                    proj["title"], proj["subject"],
-                                                    proj["description"])
+                        if st.button("Add", key=f"{key_prefix}_proj_add_{proj['id']}_{subj}"):
+                            add_student_fun_project(
+                                student_id, school_year, proj["title"],
+                                proj["subjects"] or proj["subject"], proj["description"],
+                                proj["steps"], proj["est_hours"] or 1.0)
                             st.rerun()
 
 
@@ -2549,11 +2711,17 @@ def render_fun_project_pool_admin():
         "Add, edit, or remove real-world project ideas.",
         get_fun_project_pool_df(), "id",
         [("title", "Title", "text"),
-         ("subject", "Subject", WA_SUBJECTS + ["Electives"]),
-         ("description", "Description", "textarea")],
+         ("subjects", "Subjects (comma-separated, exact match — e.g. "
+                      "\"Writing, Occupational Education\")", "text"),
+         ("description", "Description", "textarea"),
+         ("steps", "Steps (one per line — leave blank for open-ended)", "textarea"),
+         ("mess_level", "Mess level", ["Low", "Medium", "High"]),
+         ("est_hours", "Estimated hours (e.g. 1.0, 2.5)", "text")],
         add_fun_project_pool_option, update_fun_project_pool_option,
         delete_fun_project_pool_option, key_prefix="funpool",
-        expander_label_fn=lambda row: f"{row['title']} ({row['subject']})")
+        expander_label_fn=lambda row: f"{row['title']} "
+                                      f"({row['subjects'] or row['subject']}) · "
+                                      f"{row['mess_level'] or 'Low'} mess")
 
 
 def render_resources_tab(parent_mode):
@@ -3771,8 +3939,7 @@ if not parent_mode:
                              "rejected": "❌ Sent back — redo/ask parent"}.get(status, "")
                     if entry is not None and entry.get("struggled"):
                         badge += " · 😕 Marked as struggled"
-                    st.markdown(f"**{format_time12(start)}–{format_time12(end)} · "
-                               f"{subject}** {badge}")
+                    st.markdown(f"**{QUEST_TITLES.get(subject, subject)}** {badge}")
                     if subject == "Electives":
                         if chosen_electives.empty:
                             st.info("No electives picked yet — choose some in the "
@@ -3831,6 +3998,25 @@ if not parent_mode:
     with t_today:
         d = date.today()
         st.subheader(f"{d.strftime('%A')}, {d.strftime('%B %d')}")
+        today_school_year = student_row["school_year"] or "current"
+
+        active_quest = get_active_fun_project(student_id, today_school_year)
+        if active_quest is not None:
+            with st.container(border=True):
+                st.markdown(f"🗺️ **Current Quest: {active_quest['title']}**")
+                st.caption(active_quest["description"])
+                steps = parse_steps(active_quest["steps"])
+                if steps:
+                    with st.expander("📋 Quest steps"):
+                        for i, s in enumerate(steps, 1):
+                            st.markdown(f"{i}. {s}")
+                if st.button("🏁 Mark quest finished", key="today_finish_quest"):
+                    finish_fun_project(
+                        int(active_quest["id"]), student_id, active_quest["title"],
+                        active_quest["subjects"] or active_quest["subject"],
+                        active_quest["est_hours"] or 1.0)
+                    st.success("Quest complete! Sent to your parent for approval.")
+                    st.rerun()
 
         trivia = get_daily_trivia(d)
         with st.container(border=True):
@@ -3850,7 +4036,6 @@ if not parent_mode:
                     st.session_state["quiz_topic"] = qtopic
                     st.success("Selected — head to the 📝 Quizzes tab.")
 
-        today_school_year = student_row["school_year"] or "current"
         finished_this_month = count_finished_fun_projects_in_month(
             student_id, today_school_year, d.year, d.month)
         days_left_in_month = cal.monthrange(d.year, d.month)[1] - d.day
@@ -4004,8 +4189,8 @@ if not parent_mode:
                     resource_key = block[3] if len(block) > 3 else subject
                     res = CURRICULUM_RESOURCES.get(resource_key,
                         CURRICULUM_RESOURCES.get(subject, CURRICULUM_RESOURCES["Electives"]))
-                    st.markdown(f"- **{format_time12(start)}–{format_time12(end)}** · "
-                               f"{subject} — [{res[0]}]({res[1]})")
+                    st.markdown(f"- **{QUEST_TITLES.get(subject, subject)}** — "
+                               f"[{res[0]}]({res[1]})")
                     if res[2]:
                         st.caption(res[2])
 
