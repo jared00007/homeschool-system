@@ -57,7 +57,7 @@ to reach it.
 
 **Two modes, switched in the sidebar:**
 
-### 🎒 Student mode (default — no password)
+### 🎒 Student mode (default)
 - **Today tab:** the day's schedule blocks with times, direct links to each
   resource, and a "Done ✔" button per block
 - Pressing Done creates a PENDING entry — it does NOT count toward
@@ -65,9 +65,10 @@ to reach it.
 - **My Week tab:** the full weekly schedule with links
 - **My Grades tab:** read-only view of his grade averages per subject
 
-### 🔑 Parent mode (password protected)
-First time you open Parent mode, you create the password. After that it's
-required to unlock. "Lock parent mode" button re-locks it when you walk away.
+### 🔑 Parent mode (this Mac only)
+The "Parent" option in the sidebar only appears when you're on this Mac
+itself (`localhost`) — any other device on the network, including Landon's,
+only ever sees Student mode, with no toggle to switch.
 
 - **Review & Approve:** every block your son marked done shows here — adjust
   the hours if needed, then Approve (counts) or Reject (sends it back)
@@ -81,7 +82,6 @@ required to unlock. "Lock parent mode" button re-locks it when you walk away.
 - **Assessments:** log the annual standardized test / evaluator result
 - **Export:** CSVs of hours, grades, and assessments — your compliance
   packet and future transcript source data
-- **Settings:** change the parent password
 
 ## The legal side (don't forget)
 
@@ -99,13 +99,14 @@ CURRICULUM_RESOURCES, PLANNED_HOURS). Edit and relaunch.
 
 ## Backup
 
-Everything — hours, grades, assessments, the password — lives in
-`tracker/homeschool.db` (created on first run). Copy that one file to
-back the whole system up.
+Everything — hours, grades, assessments — lives in `tracker/homeschool.db`
+(created on first run). Copy that one file to back the whole system up.
 
-## A note on the password
+## A note on Parent mode access
 
-This keeps honest kids honest — it stops your son from approving his own
-hours or editing grades through the app. It is not bank-grade security:
-anyone with full access to the Mac could open the database file directly.
-For this use case (one family, one machine), that's the right trade-off.
+Parent mode has no password — access is controlled entirely by which
+device you're on, since only this Mac (via `localhost`) can see the
+"Parent" option at all. That's the right trade-off as long as this Mac
+stays yours alone; if Landon ever uses this same computer directly,
+he'd have full Parent access with nothing stopping him — worth
+reintroducing a password if that ever changes.

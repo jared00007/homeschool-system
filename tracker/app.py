@@ -8,14 +8,12 @@ Data lives in homeschool.db next to this file. Nothing leaves your machine.
 Modes:
   - Student (default): sees today's agenda + links, marks blocks complete
     (creates PENDING entries), views own grades.
-  - Parent (password): approves/adjusts/rejects pending hours, grades work,
-    sees compliance dashboards, manages assessments, exports records.
+  - Parent (localhost only): approves/adjusts/rejects pending hours, grades
+    work, sees compliance dashboards, manages assessments, exports records.
 """
 
-import hashlib
 import os
 import random
-import secrets
 import sqlite3
 import calendar as cal
 import time
@@ -1326,23 +1324,6 @@ def welcome_seen():
 
 def mark_welcome_seen():
     setting_set("welcome_seen", "1")
-
-
-def hash_pw(password, salt):
-    return hashlib.sha256((salt + password).encode()).hexdigest()
-
-
-def check_password(password):
-    salt, stored = setting_get("pw_salt"), setting_get("pw_hash")
-    if not salt or not stored:
-        return False
-    return hash_pw(password, salt) == stored
-
-
-def set_password(password):
-    salt = secrets.token_hex(16)
-    setting_set("pw_salt", salt)
-    setting_set("pw_hash", hash_pw(password, salt))
 
 
 def get_students():
@@ -3458,9 +3439,6 @@ def render_day1_checklist(student_id, school_year):
 # ------------------------------------------------------------- app shell
 st.set_page_config(page_title="Homeschool", page_icon="📚", layout="wide")
 
-if "parent_authed" not in st.session_state:
-    st.session_state.parent_authed = False
-
 students_df = get_students()
 
 if "welcome_seen" not in st.session_state:
@@ -3503,37 +3481,16 @@ elif os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL"):
 
 with st.sidebar:
     st.title("📚 Homeschool")
-    mode = st.radio("Mode", ["🎒 Student", "🔑 Parent"], label_visibility="collapsed")
-
-    # --- parent auth
-    if mode == "🔑 Parent" and not st.session_state.parent_authed:
-        pw_exists = setting_get("pw_hash") is not None
-        if not pw_exists:
-            st.info("First time: create the parent password.")
-            new_pw = st.text_input("New parent password", type="password")
-            new_pw2 = st.text_input("Confirm password", type="password")
-            if st.button("Set password"):
-                if len(new_pw) < 4:
-                    st.error("Use at least 4 characters.")
-                elif new_pw != new_pw2:
-                    st.error("Passwords don't match.")
-                else:
-                    set_password(new_pw)
-                    st.session_state.parent_authed = True
-                    st.rerun()
-        else:
-            pw = st.text_input("Parent password", type="password")
-            if st.button("Unlock"):
-                if check_password(pw):
-                    st.session_state.parent_authed = True
-                    st.rerun()
-                else:
-                    st.error("Wrong password.")
-
-    if mode == "🔑 Parent" and st.session_state.parent_authed:
-        if st.button("🔒 Lock parent mode"):
-            st.session_state.parent_authed = False
-            st.rerun()
+    # Parent mode is only offered to whoever's on this Mac itself
+    # (localhost) — devices reached over the LAN address (Landon's
+    # laptop/phone) see Student mode only, no toggle. The parent password
+    # is a matter of which device you're on, not a password.
+    client_ip = st.context.ip_address
+    is_local = client_ip in (None, "127.0.0.1", "::1", "localhost")
+    if is_local:
+        mode = st.radio("Mode", ["🎒 Student", "🔑 Parent"], label_visibility="collapsed")
+    else:
+        mode = "🎒 Student"
 
     st.divider()
     # --- student picker
@@ -3548,7 +3505,7 @@ with st.sidebar:
         student_row = None
         st.info("No student yet — add one in Parent mode.")
 
-    if mode == "🔑 Parent" and st.session_state.parent_authed:
+    if mode == "🔑 Parent":
         with st.expander("➕ Add a student"):
             n = st.text_input("Name", key="add_name")
             g = st.text_input("Grade (e.g. 8th)", key="add_grade")
@@ -3560,7 +3517,7 @@ with st.sidebar:
                     conn.commit()
                     st.rerun()
 
-parent_mode = (mode == "🔑 Parent") and st.session_state.parent_authed
+parent_mode = (mode == "🔑 Parent")
 
 # =========================================================== STUDENT MODE
 if not parent_mode:
@@ -4258,20 +4215,5 @@ else:
 
     # ---- Settings
     with t_settings:
-        st.subheader("Change parent password")
-        cur = st.text_input("Current password", type="password", key="cur_pw")
-        new1 = st.text_input("New password", type="password", key="new_pw1")
-        new2 = st.text_input("Confirm new password", type="password", key="new_pw2")
-        if st.button("Change password"):
-            if not check_password(cur):
-                st.error("Current password is wrong.")
-            elif len(new1) < 4:
-                st.error("Use at least 4 characters.")
-            elif new1 != new2:
-                st.error("New passwords don't match.")
-            else:
-                set_password(new1)
-                st.success("Password changed.")
-        st.divider()
         st.caption("Schedule, curriculum links, and weekly hour targets are constants "
                    "near the top of app.py — edit that file to change the plan.")
