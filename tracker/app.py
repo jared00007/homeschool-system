@@ -3975,6 +3975,8 @@ if not parent_mode:
                     res = CURRICULUM_RESOURCES.get(subject, CURRICULUM_RESOURCES["Electives"])
                     st.markdown(f"- **{format_time12(start)}–{format_time12(end)}** · "
                                f"{subject} — [{res[0]}]({res[1]})")
+                    if res[2]:
+                        st.caption(res[2])
 
     with t_scope:
         render_scope_reference()
