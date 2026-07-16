@@ -105,39 +105,111 @@ WA_ASSESSMENT_RESOURCES = (
 CURRICULUM_RESOURCES = {
     "Mathematics": ("Khan Academy — 8th Grade Math",
                     "https://www.khanacademy.org/math/cc-eighth-grade-math",
-                    "Work through units in order; use the mastery system."),
+                    "Work through units in order; use the mastery system.",
+                    ["Go to the link and log in with your school email.",
+                     "Click \"Course,\" and make sure \"8th grade\" is selected.",
+                     "Find the first unit that isn't fully mastered yet — look "
+                     "for a progress bar that isn't 100% filled in.",
+                     "Work through that unit's lessons in order: watch the "
+                     "instructional video first, then do the practice problems.",
+                     "Finish at least one full lesson OR 20 practice problems "
+                     "this block, whichever comes first.",
+                     "Missed a problem? Read the hint or \"explain\" article "
+                     "before trying again — don't just guess.",
+                     "When the block is over, click \"Done ✔\" below."]),
     "Reading": ("CommonLit / library book",
                 "https://www.commonlit.org/",
                 "Passage + questions, or independent reading. Supplement 2x/week "
                 "with Vocabulary.com (vocabulary.com) — matches the Vocabulary "
-                "section on standardized tests like ITBS/Stanford."),
+                "section on standardized tests like ITBS/Stanford.",
+                ["If using CommonLit: log in, open the next assigned passage "
+                 "(or pick one at your grade level if nothing's assigned), and "
+                 "read the whole thing before answering anything.",
+                 "Answer every question at the end of the passage — don't skip any.",
+                 "If reading a library book instead: read for the entire block "
+                 "and keep track of what page you stopped on.",
+                 "Twice a week, spend this block on Vocabulary.com instead of "
+                 "a passage/book — ask a parent which days.",
+                 "Click \"Done ✔\" below when the block is finished."]),
     "Writing": ("ReadWorks prompts + journal",
                 "https://www.readworks.org/",
                 "One structured piece weekly; parent reviews. Supplement 2x/week "
                 "with Khan Academy Grammar (same Khan login) for capitalization, "
                 "punctuation & usage — the \"Language Mechanics\" section on "
-                "standardized tests."),
+                "standardized tests.",
+                ["Go to ReadWorks and find this week's writing prompt (reuse "
+                 "last week's if nothing new is assigned).",
+                 "Spend the first 5 minutes planning: write down 3-4 points "
+                 "you want to make before you start the actual writing.",
+                 "Write a full response — one opening sentence, 2-3 supporting "
+                 "points with real detail/examples, one closing sentence.",
+                 "Read it back once and fix obvious mistakes before you're done.",
+                 "Twice a week, use this block for Khan Academy Grammar "
+                 "instead (same login) — ask a parent which days.",
+                 "Leave your writing somewhere a parent can see it, then click "
+                 "\"Done ✔\" below."]),
     "Science": ("CK-12 FlexBooks",
                 "https://www.ck12.org/student/",
-                "Read the chapter, do the adaptive practice."),
+                "Read the chapter, do the adaptive practice.",
+                ["Go to the link, log in, and open the current chapter — ask "
+                 "a parent if you're not sure which one you're on.",
+                 "Read the entire section for today. Don't skim — if a "
+                 "sentence doesn't make sense, re-read it before moving on.",
+                 "Do the adaptive practice questions at the end of the section.",
+                 "If a concept still doesn't make sense after the practice, "
+                 "write down the question to ask a parent later.",
+                 "Click \"Done ✔\" below when finished."]),
     "Social Studies": ("Khan Academy — Civics/Economics",
                        "https://www.khanacademy.org/economics-finance-domain",
-                       "Civics and economics units."),
+                       "Civics and economics units.",
+                       ["Go to the link, log in, and open the Civics or "
+                        "Economics unit you're currently working through.",
+                        "Watch the lesson video first, then do the practice set.",
+                        "Complete at least one full lesson this block.",
+                        "Click \"Done ✔\" below when finished."]),
     "History": ("Khan Academy US History + Crash Course",
                 "https://www.khanacademy.org/humanities/us-history",
-                "Khan for structure; Crash Course as supplement."),
+                "Khan for structure; Crash Course as supplement.",
+                ["Go to Khan Academy US History, find your current unit, and "
+                 "complete one full lesson (video + practice).",
+                 "If you finish early, search YouTube for the matching Crash "
+                 "Course US History episode on the same topic — good extra context.",
+                 "Click \"Done ✔\" below when finished."]),
     "Health": ("CDC BAM! Body & Mind",
                "https://www.cdc.gov/bam/index.html",
-               "Short weekly unit — nutrition, first aid, fitness."),
+               "Short weekly unit — nutrition, first aid, fitness.",
+               ["Go to the link and open this week's topic (nutrition, first "
+                "aid, or fitness) — ask a parent if nothing's assigned yet.",
+                "Read/complete the short unit for that topic.",
+                "These units are quick — use any leftover time on an actual "
+                "healthy habit (a short walk, planning a healthy meal, etc.) "
+                "and jot down what you did.",
+                "Click \"Done ✔\" below when finished."]),
     "Art & Music Appreciation": ("Khan Academy Art/Music + museum stops",
                                  "https://www.khanacademy.org/humanities/music",
-                                 "Museum visits count — log them as field trips."),
+                                 "Museum visits count — log them as field trips.",
+                                 ["Go to the link and complete one lesson in "
+                                  "either art or music appreciation.",
+                                  "If a museum, gallery, or concert happened this "
+                                  "week, that counts instead — tell a parent so "
+                                  "they can log it as a field trip.",
+                                  "Click \"Done ✔\" below when finished."]),
     "Occupational Education": ("Life skills / careers",
                                "https://www.khanacademy.org/college-careers-more",
-                               "Budgeting, careers, or shadowing a parent's work."),
+                               "Budgeting, careers, or shadowing a parent's work.",
+                               ["Go to the link and explore one topic: "
+                                "budgeting, a specific career, or general job skills.",
+                                "Or, if you're helping/shadowing a parent's work "
+                                "task today, that counts instead — jot down what "
+                                "you learned.",
+                                "Click \"Done ✔\" below when finished."]),
     "Electives": ("Duolingo Spanish / coding",
                   "https://www.duolingo.com/",
-                  "Flexible slot — follow his interest."),
+                  "Flexible slot — follow his interest.",
+                  ["Open whichever elective you've picked (see 🎯 Electives & "
+                   "Books for your choices).",
+                   "Do one full lesson or session — aim for 15-20 focused minutes.",
+                   "Click \"Done ✔\" below when finished."]),
 }
 
 MAX_ELECTIVES = 2
@@ -3671,6 +3743,11 @@ if not parent_mode:
                         if subject == "Reading" and current_book is not None:
                             st.markdown(f"📖 Currently reading: **{current_book['title']}** "
                                         f"by {current_book['author']}")
+                        steps = res[3] if len(res) > 3 else []
+                        if steps:
+                            with st.expander("📋 Step-by-step — exactly what to do"):
+                                for i, step in enumerate(steps, start=1):
+                                    st.markdown(f"{i}. {step}")
                 with c2:
                     if status is None and allow_marking:
                         if st.button("Done ✔",
