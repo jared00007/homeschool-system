@@ -3839,7 +3839,11 @@ with st.sidebar:
     # laptop/phone) see Student mode only, no toggle at all.
     client_ip = st.context.ip_address
     is_local = client_ip in (None, "127.0.0.1", "::1", "localhost")
-    if is_local:
+    # A link from the Parent Console ("Open Student View") opens a new tab
+    # at ?view=student — force Student mode there even on localhost, so it
+    # always lands cleanly instead of showing the mode toggle.
+    force_student = st.query_params.get("view") == "student"
+    if is_local and not force_student:
         # This Mac is the parent's launch point, so default to Parent mode
         # on load rather than Student.
         mode = st.radio("Mode", ["🔑 Parent", "🎒 Student"], label_visibility="collapsed")
@@ -4299,8 +4303,12 @@ else:
         st.warning("Add a student in the sidebar to begin.")
         st.stop()
 
-    st.title(f"Parent Console — {student_row['name']} "
-             f"({student_row['school_year'] or 'current year'})")
+    title_col, link_col = st.columns([5, 1.4])
+    with title_col:
+        st.title(f"Parent Console — {student_row['name']} "
+                 f"({student_row['school_year'] or 'current year'})")
+    with link_col:
+        st.link_button("🎒 Open Student View", "?view=student", use_container_width=True)
 
     reminder = get_assessment_reminder(student_id, student_row["school_year"] or "current")
     if reminder:
