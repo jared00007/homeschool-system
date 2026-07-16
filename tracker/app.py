@@ -4068,8 +4068,8 @@ with st.sidebar:
             st.session_state.student_view = "Today"
 
         def _nav_group(label, items, key):
-            st.markdown(f'<div style="font-size:10.5px;font-weight:800;letter-spacing:.08em;'
-                       f'text-transform:uppercase;color:#16354022;margin:10px 0 5px">{label}</div>',
+            st.markdown(f'<div style="font-size:13px;font-weight:900;letter-spacing:.06em;'
+                       f'text-transform:uppercase;color:#1A1610;margin:12px 0 6px">{label}</div>',
                        unsafe_allow_html=True)
             with st.container(key=key):
                 for view_label, icon in items:
