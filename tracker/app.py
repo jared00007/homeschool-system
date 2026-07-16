@@ -3980,6 +3980,23 @@ st.set_page_config(page_title="Homeschool", page_icon="📚", layout="wide")
 # rule just silently no-ops rather than breaking anything.
 st.markdown("""
 <style>
+/* Halftone Ben-Day dots — the actual signature of comic-book printing —
+   instead of a flat background. Two colors of small low-opacity dots on
+   an offset grid, layered over the theme's warm gold-cream base. */
+.stApp {
+    background-image:
+        radial-gradient(circle, #E8402C26 1.6px, transparent 1.8px),
+        radial-gradient(circle, #4FC3E826 1.6px, transparent 1.8px);
+    background-size: 24px 24px, 24px 24px;
+    background-position: 0 0, 12px 12px;
+}
+[data-testid="stSidebar"] {
+    background-image:
+        radial-gradient(circle, #E8402C1c 1.4px, transparent 1.6px),
+        radial-gradient(circle, #4FC3E81c 1.4px, transparent 1.6px);
+    background-size: 22px 22px, 22px 22px;
+    background-position: 0 0, 11px 11px;
+}
 [data-testid="stVerticalBlockBorderWrapper"] > div {
     border: 3px solid #1A1610 !important;
     border-radius: 8px !important;
