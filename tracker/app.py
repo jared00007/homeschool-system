@@ -1301,6 +1301,8 @@ def get_conn():
         conn.execute("ALTER TABLE log_entries ADD COLUMN status TEXT DEFAULT 'approved'")
     if "submitted_at" not in cols:
         conn.execute("ALTER TABLE log_entries ADD COLUMN submitted_at TEXT")
+    if "struggled" not in cols:
+        conn.execute("ALTER TABLE log_entries ADD COLUMN struggled INTEGER DEFAULT 0")
     # migration: older DBs may lack newer health_habits columns
     cols = table_columns(conn, "health_habits")
     if "journal" not in cols:
@@ -1401,13 +1403,24 @@ def get_entries(student_id, statuses=None):
     return df
 
 
-def add_entry(student_id, entry_date, subject, hours, description, day_type, status):
+def add_entry(student_id, entry_date, subject, hours, description, day_type, status,
+              struggled=False):
     conn.execute("""INSERT INTO log_entries
-        (student_id, entry_date, subject, hours, description, day_type, status, submitted_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (student_id, entry_date, subject, hours, description, day_type, status,
+         submitted_at, struggled)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (student_id, entry_date.isoformat(), subject, hours, description, day_type,
-         status, datetime.now().isoformat(timespec="seconds")))
+         status, datetime.now().isoformat(timespec="seconds"), int(struggled)))
     conn.commit()
+
+
+def get_block_entry(student_id, d, subject):
+    """The full log_entries row for one schedule block, or None if not logged yet."""
+    df = get_entries(student_id)
+    if df.empty:
+        return None
+    m = df[(df["entry_date"] == d.isoformat()) & (df["subject"] == subject)]
+    return None if m.empty else m.iloc[0]
 
 
 def update_entry_status(entry_id, status, hours=None):
@@ -2112,14 +2125,6 @@ def block_hours(start, end):
 def format_time12(t):
     """'14:00' -> '2:00 PM' — schedule times are wall-clock Pacific, no military time."""
     return datetime.strptime(t, "%H:%M").strftime("%I:%M %p").lstrip("0")
-
-
-def block_logged(student_id, d, subject):
-    df = get_entries(student_id)
-    if df.empty:
-        return None
-    m = df[(df["entry_date"] == d.isoformat()) & (df["subject"] == subject)]
-    return None if m.empty else m.iloc[0]["status"]
 
 
 def grade_summary(student_id):
@@ -3711,7 +3716,8 @@ if not parent_mode:
 
         done_ct = 0
         for subject, start, end in blocks:
-            status = block_logged(student_id, d, subject)
+            entry = get_block_entry(student_id, d, subject)
+            status = entry["status"] if entry is not None else None
             if status:
                 done_ct += 1
             with st.container(border=True):
@@ -3720,6 +3726,8 @@ if not parent_mode:
                     badge = {"pending": "🕓 Waiting for parent approval",
                              "approved": "✅ Approved",
                              "rejected": "❌ Sent back — redo/ask parent"}.get(status, "")
+                    if entry is not None and entry.get("struggled"):
+                        badge += " · 😕 Marked as struggled"
                     st.markdown(f"**{format_time12(start)}–{format_time12(end)} · "
                                f"{subject}** {badge}")
                     if subject == "Electives":
@@ -3750,10 +3758,14 @@ if not parent_mode:
                                     st.markdown(f"{i}. {step}")
                 with c2:
                     if status is None and allow_marking:
+                        struggled = st.checkbox(
+                            "I struggled / still don't get it",
+                            key=f"{key_prefix}_struggle_{d.isoformat()}_{subject}_{start}")
                         if st.button("Done ✔",
                                      key=f"{key_prefix}_{d.isoformat()}_{subject}_{start}"):
                             add_entry(student_id, d, subject, block_hours(start, end),
-                                      f"Completed via {done_label}", "Instruction", "pending")
+                                      f"Completed via {done_label}", "Instruction", "pending",
+                                      struggled=struggled)
                             st.rerun()
         st.progress(done_ct / len(blocks),
                     text=f"{done_ct} / {len(blocks)} blocks logged")
@@ -4081,7 +4093,8 @@ else:
             with st.container(border=True):
                 c1, c2, c3, c4 = st.columns([3, 1.2, 1, 1])
                 with c1:
-                    st.markdown(f"**{fmt_date(row['entry_date'])} · {row['subject']}**")
+                    flag = " · 😕 He marked this as struggled" if row.get("struggled") else ""
+                    st.markdown(f"**{fmt_date(row['entry_date'])} · {row['subject']}**{flag}")
                     st.caption(row["description"] or "")
                 with c2:
                     adj = st.number_input("Hours", value=float(row["hours"]),
