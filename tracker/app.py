@@ -1209,6 +1209,17 @@ QUEST_TITLES = {
     "Art & Music Appreciation": "🎨 Creative Studio", "Electives": "🎮 Bonus Round",
 }
 
+# A fixed pop-art color per subject — same idea as QUEST_POP_COLORS on the
+# Quest Board, but a stable mapping here so each subject always reads as
+# the same color across the app (Math is always blue, etc.) rather than
+# shifting per render.
+QUEST_SUBJECT_COLORS = {
+    "Mathematics": "#4FC3E8", "Reading": "#B084F0", "Writing": "#FF5FA2",
+    "Science": "#6FCF7A", "Social Studies": "#FF9F45", "History": "#FFD23F",
+    "Health": "#6FCF7A", "Occupational Education": "#FF9F45",
+    "Art & Music Appreciation": "#FF5FA2", "Electives": "#4FC3E8",
+}
+
 PLANNED_HOURS = {
     "Mathematics": 6.0, "Reading": 4.0, "Writing": 2.0, "Science": 4.0,
     "Social Studies": 2.5, "History": 2.5, "Health": 0.75,
@@ -1972,41 +1983,44 @@ def mess_badge(mess_level):
 # Trading-card styling for the Quest Board — a deliberately fixed bright
 # card face (like a real physical card) rather than following Streamlit's
 # light/dark theme, same way a paper card doesn't change color in the dark.
+# Comic Log — the app's visual identity: thick ink borders, halftone-dot
+# panel shading, hand-laid-page tilt, punchy varied pop-art colors rather
+# than a single muted accent. QUEST_POP_COLORS rotates across queued cards
+# so the board reads as colorful panels, not a monochrome list.
+QUEST_POP_COLORS = ["#FFD23F", "#4FC3E8", "#FF5FA2", "#6FCF7A", "#B084F0", "#FF9F45"]
+
 QUEST_CARD_CSS = """
 <style>
-.qcard { position: relative; border-radius: 14px; padding: 3px; margin-bottom: 14px;
-  background: linear-gradient(155deg, #b8bcc8, #9aa3b2); transition: transform 0.15s ease; }
-.qcard:hover { transform: translateY(-3px); }
-.qcard.active { background: linear-gradient(155deg, #ff8a5c, #ffd76a); }
-.qcard.done { background: linear-gradient(155deg, #d4a017, #8a6d10); }
-.qcard-inner { background: #fdfbff; border-radius: 11px; overflow: hidden; color: #241b2d; }
-.qcard-art { height: 92px; display: flex; align-items: center; justify-content: center;
-  font-size: 44px; background: linear-gradient(160deg, #efe9ff, #ddeee8); position: relative; }
-.qcard.active .qcard-art { background: linear-gradient(160deg, #fff2df, #ffe3d1); }
-.qcard.done .qcard-art { background: linear-gradient(160deg, #fff6da, #f5e3ad); }
-.qcard-ribbon { position: absolute; top: 8px; left: 8px; font-size: 9.5px; font-weight: 800;
-  letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; border-radius: 5px;
-  background: #ffffffaa; color: #241b2d; }
+.qcard { border: 3px solid #1A1610; border-radius: 7px; overflow: hidden; margin-bottom: 18px;
+  background: #FFFDF6; box-shadow: 4px 4px 0 #1A1610; transition: transform 0.15s ease; }
+.qcard:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 #1A1610; }
+.qcard-art { height: 88px; display: flex; align-items: center; justify-content: center;
+  font-size: 40px; position: relative; border-bottom: 3px solid #1A1610;
+  background-image: repeating-radial-gradient(circle, #1A161055 0 1.5px, transparent 1.5px 7px); }
+.qcard-ribbon { position: absolute; top: 6px; left: 6px; font-size: 9px; font-weight: 800;
+  letter-spacing: 0.05em; text-transform: uppercase; padding: 3px 8px; border-radius: 10px;
+  background: #FFFDF6; border: 2px solid #1A1610; color: #1A1610; }
 .qcard-body { padding: 10px 13px 12px; }
-.qcard-title { font-weight: 800; font-size: 14.5px; margin-bottom: 3px; }
-.qcard-tags { font-size: 10.5px; color: #7a7286; margin-bottom: 6px; }
-.qcard-desc { font-size: 11.5px; color: #4a4152; line-height: 1.4; margin-bottom: 8px; }
+.qcard-title { font-weight: 800; font-size: 14.5px; margin-bottom: 3px; color: #1A1610; }
+.qcard-tags { font-size: 10.5px; color: #6b6152; margin-bottom: 6px; }
+.qcard-desc { font-size: 11.5px; color: #3a352c; line-height: 1.4; margin-bottom: 8px; }
 .qcard-stats { display: flex; justify-content: space-between; align-items: center;
-  border-top: 1px dashed #00000022; padding-top: 6px; font-size: 10.5px; }
-.qcard-hours { font-weight: 800; color: #241b2d; }
+  border-top: 2px dashed #1A161044; padding-top: 6px; font-size: 10.5px; }
+.qcard-hours { font-weight: 800; color: #1A1610; }
 .qcard-mess i { width: 5px; height: 5px; border-radius: 50%; display: inline-block;
-  margin-left: 2px; background: #00000020; }
-.qcard-mess i.on { background: #b06b2c; }
+  margin-left: 2px; background: #1A161022; }
+.qcard-mess i.on { background: #E8402C; }
 </style>
 """
 
 
 def render_quest_card(p, status):
-    """Render one quest as a trading-card-styled HTML block. status is
-    'queued', 'active', or 'done' — controls the card's border/art color
-    and ribbon text. Purely visual; the caller renders real st.button()s
-    beneath since HTML inside st.markdown can't call back into Python."""
-    ribbon = {"queued": "New", "active": "In Progress", "done": "Collected"}[status]
+    """Render one quest as a Comic Log panel: thick ink border, halftone
+    art background, hand-laid tilt, speech-bubble ribbon. status is
+    'queued', 'active', or 'done' — controls the ribbon text and art
+    color. Purely visual; the caller renders real st.button()s beneath
+    since HTML inside st.markdown can't call back into Python."""
+    ribbon = {"queued": "New!", "active": "In Progress", "done": "The End"}[status]
     icon = p["icon"] or "🗺️"
     title = escape_html(str(p["title"]))
     tags = escape_html(str(p["subjects"] or p["subject"] or ""))
@@ -2015,9 +2029,17 @@ def render_quest_card(p, status):
     mess_level = p["mess_level"] if "mess_level" in p.index else "Low"
     mess_n = {"Low": 1, "Medium": 2, "High": 3}.get(mess_level, 1)
     dots = "".join(f'<i class="{"on" if n <= mess_n else ""}"></i>' for n in (1, 2, 3))
+    if status == "active":
+        art_color = "#FF9F45"
+    elif status == "done":
+        art_color = "#FFD23F"
+    else:
+        art_color = QUEST_POP_COLORS[int(p["id"]) % len(QUEST_POP_COLORS)]
+    rotation = -0.6 if int(p["id"]) % 2 == 0 else 0.6
     st.markdown(f"""
-        <div class="qcard {status}"><div class="qcard-inner">
-          <div class="qcard-art">{icon}<div class="qcard-ribbon">{ribbon}</div></div>
+        <div class="qcard" style="transform:rotate({rotation}deg);background-color:{art_color}00">
+          <div class="qcard-art" style="background-color:{art_color}">{icon}
+            <div class="qcard-ribbon">{ribbon}</div></div>
           <div class="qcard-body">
             <div class="qcard-title">{title}</div>
             <div class="qcard-tags">{tags}</div>
@@ -2027,7 +2049,7 @@ def render_quest_card(p, status):
               <span class="qcard-mess">{dots}</span>
             </div>
           </div>
-        </div></div>
+        </div>
     """, unsafe_allow_html=True)
 
 
@@ -3951,10 +3973,43 @@ def render_day1_checklist(student_id, school_year):
 # ------------------------------------------------------------- app shell
 st.set_page_config(page_title="Homeschool", page_icon="📚", layout="wide")
 
+# Comic Log — applied app-wide so every bordered panel (Today's blocks, the
+# Current Quest card, etc.) reads as a comic panel, not just the Quest Board
+# cards. Targets Streamlit's own bordered-container test id; a defensive,
+# best-effort selector — if a future Streamlit version renames it, this
+# rule just silently no-ops rather than breaking anything.
+st.markdown("""
+<style>
+[data-testid="stVerticalBlockBorderWrapper"] > div {
+    border: 3px solid #1A1610 !important;
+    border-radius: 8px !important;
+    box-shadow: 4px 4px 0 #1A161033;
+    background: #FFFDF6;
+}
+button[kind="primary"], button[kind="secondary"] {
+    border: 2px solid #1A1610 !important;
+    box-shadow: 2px 2px 0 #1A1610;
+    font-weight: 700 !important;
+}
+button[kind="primary"]:hover, button[kind="secondary"]:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 3px 3px 0 #1A1610;
+}
+.stTabs [data-baseweb="tab-list"] { gap: 4px; }
+.stTabs [aria-selected="true"] { font-weight: 800 !important; }
+</style>
+""", unsafe_allow_html=True)
+
 students_df = get_students()
 
 with st.sidebar:
-    st.title("📚 Homeschool")
+    st.markdown(
+        '<div style="border:3px solid #1A1610;border-radius:8px;padding:10px 14px;'
+        'margin-bottom:8px;background:linear-gradient(135deg,#FFD23F,#FF9F45);'
+        'box-shadow:4px 4px 0 #1A1610">'
+        '<span style="font-size:22px;font-weight:900;color:#1A1610;'
+        'font-style:italic">📚 Homeschool</span></div>',
+        unsafe_allow_html=True)
     # Parent mode is only offered to whoever's on this Mac itself
     # (localhost) — devices reached over the LAN address (Landon's
     # laptop/phone) see Student mode only, no toggle at all.
@@ -4064,7 +4119,12 @@ if not parent_mode:
                              "rejected": "❌ Sent back — redo/ask parent"}.get(status, "")
                     if entry is not None and entry.get("struggled"):
                         badge += " · 😕 Marked as struggled"
-                    st.markdown(f"**{QUEST_TITLES.get(subject, subject)}** {badge}")
+                    chip_color = QUEST_SUBJECT_COLORS.get(subject, "#FFD23F")
+                    st.markdown(
+                        f'<span style="background:{chip_color};border:2px solid #1A1610;'
+                        f'border-radius:6px;padding:2px 10px;font-weight:800;font-size:14.5px;'
+                        f'display:inline-block">{QUEST_TITLES.get(subject, subject)}</span> {badge}',
+                        unsafe_allow_html=True)
                     if subject == "Electives":
                         if chosen_electives.empty:
                             st.info("No electives picked yet — choose some in the "
@@ -4315,8 +4375,11 @@ if not parent_mode:
                     resource_key = block[3] if len(block) > 3 else subject
                     res = CURRICULUM_RESOURCES.get(resource_key,
                         CURRICULUM_RESOURCES.get(subject, CURRICULUM_RESOURCES["Electives"]))
-                    st.markdown(f"- **{QUEST_TITLES.get(subject, subject)}** — "
-                               f"[{res[0]}]({res[1]})")
+                    dot_color = QUEST_SUBJECT_COLORS.get(subject, "#FFD23F")
+                    st.markdown(
+                        f'<span style="color:{dot_color};font-size:16px">●</span> '
+                        f'**{QUEST_TITLES.get(subject, subject)}** — [{res[0]}]({res[1]})',
+                        unsafe_allow_html=True)
                     if res[2]:
                         st.caption(res[2])
 

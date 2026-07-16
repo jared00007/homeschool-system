@@ -25,6 +25,26 @@ fi
 
 LAN_IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null)
 
+# Keep app-links.txt in sync with the current address every time the app
+# launches, so it never goes stale if this Mac's LAN address changes.
+cat > ../app-links.txt <<EOF
+Homeschool Tracker — links
+============================
+
+On this Mac:
+  http://localhost:8501
+
+From another device on the same home WiFi (e.g. Landon's laptop/phone),
+this only shows Student View:
+  http://${LAN_IP:-<see terminal next launch>}:8501
+
+Note: the second link can change if this Mac reconnects to WiFi or the
+router assigns it a new address. This file is rewritten automatically
+every time you launch start-tracker.command, so it's always current as
+of your last launch — if a device can't connect, just relaunch and
+check this file again.
+EOF
+
 echo ""
 echo "======================================================================"
 echo "  Starting the Homeschool Tracker..."
