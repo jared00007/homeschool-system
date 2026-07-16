@@ -361,7 +361,7 @@ SCOPE_BY_SUBJECT = {
 }
 
 # Seed data only — the live, editable pool lives in the fun_project_pool DB
-# table (parents manage it from the 🎉 Make It Fun tab).
+# table (parents manage it from the 🗺️ Quest Board tab).
 DEFAULT_FUN_PROJECTS = [
     {"title": "Real Family Budget Challenge", "subject": "Mathematics",
      "description": "Take the family grocery or fuel budget for a week and "
@@ -2637,10 +2637,11 @@ def render_scope_reference():
 
 
 def render_fun_projects_picker(student_id, school_year, key_prefix):
-    """Browse and pick real-world project ideas; track status. Used by both views."""
-    st.subheader("🎉 Make It Fun — Real-World Project Ideas")
-    st.caption("Pick a few that sound interesting. Finishing one sends the "
-               "hours to a parent for approval automatically.")
+    """Browse and pick major quests for the year; track status. Used by both views."""
+    st.subheader("🗺️ Quest Board — Major Quests for the Year")
+    st.caption("A backlog of bigger real-world projects for the school year — "
+               "pick what sounds interesting, not all of them need to get done. "
+               "Finishing one sends the hours to a parent for approval automatically.")
     mine = get_student_fun_projects(student_id, school_year)
     my_titles = list(mine["title"]) if not mine.empty else []
 
@@ -2705,10 +2706,11 @@ def render_fun_projects_picker(student_id, school_year, key_prefix):
 
 
 def render_fun_project_pool_admin():
-    """Parent-only: manage the fun project idea pool."""
+    """Parent-only: manage the major-quest backlog."""
     render_pool_admin(
-        "Project idea pool",
-        "Add, edit, or remove real-world project ideas.",
+        "Quest backlog",
+        "Add, edit, or remove major quests for the year — this is the pool "
+        "he picks from, not a required checklist.",
         get_fun_project_pool_df(), "id",
         [("title", "Title", "text"),
          ("subjects", "Subjects (comma-separated, exact match — e.g. "
@@ -3991,7 +3993,7 @@ if not parent_mode:
     (t_day1, t_elect, t_today, t_cal, t_week, t_scope, t_fun, t_parks, t_quiz,
      t_logins, t_grades, t_resources) = st.tabs(
         ["🚀 Day 1 & Day 2 Checklist", "🎯 Electives & Books", "📅 Today",
-         "📆 Calendar", "🗓 My Week", "📋 8th Grade Scope", "🎉 Make It Fun",
+         "📆 Calendar", "🗓 My Week", "📋 8th Grade Scope", "🗺️ Quest Board",
          "🗺️ Travel Log", "📝 Quizzes", "🔑 My Logins", "🏆 My Grades",
          "📎 Resources"])
 
@@ -4044,9 +4046,9 @@ if not parent_mode:
             student_id, today_school_year, d.year, d.month)
         days_left_in_month = cal.monthrange(d.year, d.month)[1] - d.day
         if finished_this_month == 0 and days_left_in_month <= 7:
-            st.info(f"🌟 No fun project finished yet this month — "
+            st.info(f"🌟 No quest finished yet this month — "
                     f"{days_left_in_month} day(s) left. Check out the "
-                    "🎉 Make It Fun tab!")
+                    "🗺️ Quest Board tab!")
 
         render_health_habits_checkin(student_id)
 
@@ -4140,15 +4142,15 @@ if not parent_mode:
         st.markdown(html, unsafe_allow_html=True)
         st.caption("✅ all blocks done · 🟡 partly done · 🕓 waiting for approval · "
                    "⬜ school day coming up · ▫️ past day not logged · 📌 key date · "
-                   "📝 quiz taken · 🎉 holiday/break · 🌟 fun project finished")
+                   "📝 quiz taken · 🎉 holiday/break · 🌟 quest finished")
 
         month_fun_ct = count_finished_fun_projects_in_month(
             student_id, cal_school_year, month.year, month.month)
         if month_fun_ct > 0:
-            st.caption(f"🌟 {month_fun_ct} fun project(s) finished this month.")
+            st.caption(f"🌟 {month_fun_ct} quest(s) finished this month.")
         elif month.year == today.year and month.month == today.month:
-            st.caption("🌟 No fun project finished yet this month — check the "
-                      "🎉 Make It Fun tab.")
+            st.caption("🌟 No quest finished yet this month — check the "
+                      "🗺️ Quest Board tab.")
 
         if not holidays_df.empty:
             month_holidays = holidays_df[
@@ -4318,7 +4320,7 @@ else:
     (t_checklist, t_review, t_log, t_grading, t_dash, t_cov, t_scope, t_fun,
      t_parks, t_accounts, t_assess, t_export, t_settings, t_resources) = st.tabs(
         ["🚀 Launch Checklist", "🕓 Review & Approve", "📝 Manual Log", "🎓 Grading",
-         "📊 Dashboard", "📚 Curriculum", "📋 8th Grade Scope", "🎉 Make It Fun",
+         "📊 Dashboard", "📚 Curriculum", "📋 8th Grade Scope", "🗺️ Quest Board",
          "🗺️ Travel Log", "🔑 Accounts", "✅ Assessments", "⬇️ Export",
          "⚙️ Settings", "📎 Resources"])
 
@@ -4542,7 +4544,7 @@ else:
     with t_scope:
         render_scope_reference()
 
-    # ---- Make It Fun
+    # ---- Quest Board
     with t_fun:
         school_year = student_row["school_year"] or "current"
         render_fun_projects_picker(student_id, school_year, key_prefix="parent")
