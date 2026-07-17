@@ -2701,24 +2701,48 @@ def _monday_of(d):
     return d - timedelta(days=d.weekday())
 
 
+# Words that carry no interest signal — they're the glue in the chip labels
+# and would match almost anything, so they're dropped before scoring.
+_INTEREST_STOPWORDS = {"and", "the", "for", "with", "your", "own", "stuff",
+                       "things", "appreciation", "amp"}
+
+
+def _stem(word):
+    """Crude singular-folding so a chip keyword matches a quest word regardless
+    of plural: legos->lego, comics->comic, stories->story, boxes->box. Not a
+    real stemmer — just enough that the obvious matches (Lego, Comic) stop
+    being missed on an exact-string comparison."""
+    for suf, repl in (("ies", "y"), ("ses", "s"), ("es", ""), ("s", "")):
+        if len(word) > len(suf) + 1 and word.endswith(suf):
+            return word[: -len(suf)] + repl
+    return word
+
+
+def _words(text):
+    """Set of stemmed word tokens in text — whole words only, so 'art' no
+    longer matches inside 'start' the way a substring check did."""
+    return {_stem(w) for w in re.split(r"[^a-z]+", (text or "").lower())
+            if len(w) > 2 and w not in _INTEREST_STOPWORDS}
+
+
 def _interest_keywords(profile):
-    """Bare keywords from the interest chips (emoji + connectors stripped),
-    for loosely ranking which pool quests match what he's into."""
-    words = set()
+    """Stemmed keyword set from the interest chips (emoji + connectors
+    stripped), for ranking which pool quests match what he's into."""
+    kw = set()
     for chip in profile.get("interests", []):
         txt = chip.split(" ", 1)[1] if " " in chip else chip
-        for w in re.split(r"[^a-z]+", txt.lower()):
-            if len(w) > 2 and w not in ("and", "the"):
-                words.add(w)
-    return words
+        kw |= _words(txt)
+    return kw
 
 
 def _quest_interest_score(row, kw):
+    """How many interest keywords appear as whole (stemmed) words anywhere in
+    the quest's title/subject/description."""
     if not kw:
         return 0
-    hay = " ".join(str(row.get(c, "") or "") for c in
-                   ("title", "subjects", "subject", "description")).lower()
-    return sum(1 for w in kw if w in hay)
+    hay = _words(" ".join(str(row.get(c, "") or "") for c in
+                          ("title", "subjects", "subject", "description")))
+    return len(kw & hay)
 
 
 def get_weekly_plan(student_id, week_start):
@@ -3633,8 +3657,49 @@ def render_fun_projects_picker(student_id, school_year, key_prefix):
                     st.rerun()
         st.divider()
 
-    st.markdown("### 🗺️ Available Quests")
     pool = get_fun_project_pool_df()
+    profile = get_passion_profile(student_id)
+    kw = _interest_keywords(profile)
+
+    def _add_quest(proj):
+        add_student_fun_project(
+            student_id, school_year, proj["title"],
+            proj["subjects"] or proj["subject"], proj["description"],
+            proj["steps"], proj["est_hours"] or 1.0, proj["icon"])
+
+    # --- ✨ Picked for you: the highest interest-scoring quests he hasn't
+    # already taken. This is what makes the interest chips visibly matter on
+    # this page (they drive the blender either way, but a browsing kid should
+    # see it too).
+    if kw:
+        ranked = []
+        for _, proj in pool.iterrows():
+            if proj["title"] in my_titles:
+                continue
+            hits = kw & _words(" ".join(str(proj.get(c, "") or "") for c in
+                                        ("title", "subjects", "subject", "description")))
+            if hits:
+                ranked.append((len(hits), sorted(hits), proj))
+        ranked.sort(key=lambda x: -x[0])
+        if ranked:
+            st.markdown("### ✨ Picked for you")
+            st.caption("Based on what you tapped you're into. The more it "
+                       "matches, the higher it is.")
+            cols = st.columns(3)
+            for i, (_, hits, proj) in enumerate(ranked[:6]):
+                with cols[i % 3]:
+                    render_quest_card(proj, "queued")
+                    st.caption("✨ matches: " + ", ".join(hits))
+                    if st.button("➕ Add to My Quests",
+                                key=f"{key_prefix}_proj_pick_{proj['id']}",
+                                use_container_width=True):
+                        _add_quest(proj)
+                        st.rerun()
+            st.divider()
+
+    st.markdown("### 🗺️ Available Quests")
+    st.caption("Everything, grouped by subject." if not kw else
+               "Everything else, grouped by subject — most-you-first inside each.")
     tag_map = {}
     for _, proj in pool.iterrows():
         # NaN-safe: a pandas NULL is a float, which is truthy, so the old
@@ -3649,6 +3714,8 @@ def render_fun_projects_picker(student_id, school_year, key_prefix):
         available = [p for p in tag_map[subj] if p["title"] not in my_titles]
         if not available:
             continue
+        # within a subject, lead with the ones that match his interests
+        available.sort(key=lambda p: -_quest_interest_score(p, kw))
         with st.expander(f"{subj} ({len(available)})"):
             cols = st.columns(3)
             for i, proj in enumerate(available):
@@ -3657,10 +3724,7 @@ def render_fun_projects_picker(student_id, school_year, key_prefix):
                     if st.button("➕ Add to My Quests",
                                 key=f"{key_prefix}_proj_add_{proj['id']}_{subj}",
                                 use_container_width=True):
-                        add_student_fun_project(
-                            student_id, school_year, proj["title"],
-                            proj["subjects"] or proj["subject"], proj["description"],
-                            proj["steps"], proj["est_hours"] or 1.0, proj["icon"])
+                        _add_quest(proj)
                         st.rerun()
 
     if not finished.empty:
