@@ -25,6 +25,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
+import streamlit.components.v1 as components
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -3957,6 +3958,141 @@ def render_plan_blender(student_id, school_year):
         st.rerun()
 
 
+def build_esa_packet_html(student_id, student_row, school_year):
+    """A self-contained, print-ready records packet. The Foundations section
+    lists each completed module's objectives — that's the 'documented
+    educational purpose' an ESA reimbursement wants, which a bare hours CSV
+    doesn't carry. Returns a full HTML document string (parent prints to PDF)."""
+    name = student_row["name"]
+    grade = student_row["grade"] or ""
+    approved = get_entries(student_id, statuses=["approved"])
+    total_hours = float(approved["hours"].sum()) if not approved.empty else 0.0
+    days = approved["entry_date"].nunique() if not approved.empty else 0
+    start, end = get_school_year_dates(school_year)
+    if start and end:
+        span = f"{fmt_date(start)} – {fmt_date(end)}"
+    elif not approved.empty:
+        span = f"{fmt_date(approved['entry_date'].min())} – {fmt_date(approved['entry_date'].max())}"
+    else:
+        span = "—"
+
+    def esc(x):
+        return escape_html(str(x))
+
+    # hours by subject
+    subj_rows = ""
+    if not approved.empty:
+        by = approved.groupby("subject")["hours"].sum().sort_values(ascending=False)
+        for subj, h in by.items():
+            subj_rows += f"<tr><td>{esc(subj)}</td><td class='n'>{h:.1f}</td></tr>"
+    else:
+        subj_rows = "<tr><td colspan='2'>No approved hours yet.</td></tr>"
+
+    # completed Foundations, with objectives = documented educational purpose
+    sf = get_student_foundations(student_id)
+    fnd_rows = ""
+    if not sf.empty:
+        fdone = sf[sf["prog_status"] == "complete"]
+        for _, m in fdone.iterrows():
+            when = str(m["completed_at"])[:10] if m["completed_at"] else ""
+            fnd_rows += (f"<tr><td>{esc(m['title'])}<div class='muted'>"
+                         f"{esc(m['pillar'])}</div></td>"
+                         f"<td>{esc(m['objectives'] or '')}</td>"
+                         f"<td class='n'>{esc(m['subjects'] or '')}</td>"
+                         f"<td class='n'>{when}</td></tr>")
+    if not fnd_rows:
+        fnd_rows = "<tr><td colspan='4'>None completed yet.</td></tr>"
+
+    # completed Passion projects
+    mine = get_student_fun_projects(student_id, school_year)
+    quest_rows = ""
+    if not mine.empty:
+        for _, p in mine[mine["status"] == "finished"].iterrows():
+            when = fmt_date(p["finished_date"]) if p["finished_date"] else ""
+            quest_rows += (f"<tr><td>{esc(p['title'])}</td>"
+                           f"<td class='n'>{esc(p['subjects'] or p['subject'] or '')}</td>"
+                           f"<td class='n'>{when}</td></tr>")
+    if not quest_rows:
+        quest_rows = "<tr><td colspan='3'>None finished yet.</td></tr>"
+
+    # grades
+    ga = get_assignments(student_id)
+    grade_rows = ""
+    if not ga.empty:
+        for _, g in ga.iterrows():
+            pct = (f" ({100 * g['score'] / g['max_score']:.0f}%)"
+                   if g["max_score"] else "")
+            grade_rows += (f"<tr><td>{esc(fmt_date(g['assign_date']))}</td>"
+                           f"<td>{esc(g['subject'])}</td><td>{esc(g['title'])}</td>"
+                           f"<td class='n'>{esc(g['score'])}/{esc(g['max_score'])}{pct}</td></tr>")
+    if not grade_rows:
+        grade_rows = "<tr><td colspan='4'>No grades recorded.</td></tr>"
+
+    # assessments
+    hist = get_assessments(student_id)
+    assess_rows = ""
+    if not hist.empty:
+        for _, a in hist.iterrows():
+            assess_rows += (f"<tr><td>{esc(fmt_date(a['assessment_date']))}</td>"
+                            f"<td>{esc(a['assessment_type'])}</td>"
+                            f"<td>{esc(a['evaluator'] or '')}</td>"
+                            f"<td>{esc(a['result'] or '')}</td></tr>")
+    if not assess_rows:
+        assess_rows = "<tr><td colspan='4'>No assessment on record.</td></tr>"
+
+    generated = date.today().strftime("%B %d, %Y")
+    return f"""<!doctype html><html><head><meta charset="utf-8">
+<title>{esc(name)} — Homeschool Records {esc(school_year)}</title>
+<style>
+  body {{ font-family: -apple-system, Segoe UI, Roboto, sans-serif; color:#1a1a1a;
+    max-width: 820px; margin: 24px auto; padding: 0 20px; }}
+  h1 {{ margin: 0 0 2px; font-size: 24px; }}
+  h2 {{ margin: 26px 0 8px; font-size: 15px; text-transform: uppercase;
+    letter-spacing: .05em; border-bottom: 2px solid #1a1a1a; padding-bottom: 4px; }}
+  .sub {{ color:#555; margin-bottom: 14px; }}
+  .cards {{ display:flex; gap: 12px; margin: 10px 0 4px; }}
+  .stat {{ border:1px solid #ccc; border-radius:8px; padding:10px 14px; flex:1; }}
+  .stat b {{ font-size: 22px; display:block; }}
+  table {{ width:100%; border-collapse: collapse; font-size: 13px; }}
+  th, td {{ text-align:left; padding:6px 8px; border-bottom:1px solid #e2e2e2;
+    vertical-align: top; }}
+  th {{ background:#f4f4f4; }}
+  td.n, th.n {{ white-space: nowrap; }}
+  .muted {{ color:#777; font-size: 11px; }}
+  .foot {{ margin-top: 28px; color:#777; font-size: 11px; }}
+  @media print {{ body {{ margin: 0; }} h2 {{ page-break-after: avoid; }} }}
+</style></head><body>
+<h1>Homeschool Records — {esc(name)}</h1>
+<div class="sub">{esc(grade)} · School year {esc(school_year)} · {esc(span)}<br>
+  Generated {generated} · Washington State (RCW 28A.200)</div>
+<div class="cards">
+  <div class="stat"><b>{total_hours:.0f}</b>approved instruction hours
+    <div class="muted">of 1,000</div></div>
+  <div class="stat"><b>{days}</b>days of instruction<div class="muted">of 180</div></div>
+  <div class="stat"><b>{int((sf['prog_status'] == 'complete').sum()) if not sf.empty else 0}</b>
+    life-skills modules<div class="muted">Foundations completed</div></div>
+</div>
+<h2>Hours by subject</h2>
+<table><thead><tr><th>Subject</th><th class="n">Hours</th></tr></thead>
+<tbody>{subj_rows}</tbody></table>
+<h2>Foundations completed — educational purpose</h2>
+<table><thead><tr><th>Module</th><th>What was learned</th><th class="n">Subjects</th>
+<th class="n">Date</th></tr></thead><tbody>{fnd_rows}</tbody></table>
+<h2>Passion projects completed</h2>
+<table><thead><tr><th>Project</th><th class="n">Subjects</th><th class="n">Date</th></tr></thead>
+<tbody>{quest_rows}</tbody></table>
+<h2>Grades</h2>
+<table><thead><tr><th>Date</th><th>Subject</th><th>Assignment</th><th class="n">Score</th></tr></thead>
+<tbody>{grade_rows}</tbody></table>
+<h2>Annual assessment</h2>
+<table><thead><tr><th>Date</th><th>Type</th><th>Evaluator</th><th>Result</th></tr></thead>
+<tbody>{assess_rows}</tbody></table>
+<div class="foot">Prepared with Compass. This packet documents instruction hours
+  and educational purpose for homeschool records and, where applicable, ESA
+  reimbursement. Verify your program's specific requirements.</div>
+</body></html>"""
+
+
 def render_resources_tab(parent_mode):
     """Browsable curriculum material library — photos, documents, or links.
     Parent can add/remove material; both views browse the same list."""
@@ -6294,11 +6430,27 @@ else:
 
     # ---- Export
     elif parent_view == "Export":
-        st.subheader("Export records")
+        st.subheader("Records & ESA Packet")
+        school_year = student_row["school_year"] or "current"
+        base = student_row["name"].replace(" ", "_")
+
+        st.markdown("**📄 ESA / compliance packet**")
+        st.caption("One printable page: hours by subject, completed Foundations "
+                   "modules *with what was learned* (the educational purpose an "
+                   "ESA wants), passion projects, grades, and assessment. Open "
+                   "it and use your browser's Print → Save as PDF.")
+        packet_html = build_esa_packet_html(student_id, student_row, school_year)
+        st.download_button("⬇️ Download records packet (HTML → print to PDF)",
+            packet_html.encode(), file_name=f"{base}_records_{school_year}.html",
+            mime="text/html", type="primary")
+        with st.expander("👁️ Preview the packet"):
+            components.html(packet_html, height=560, scrolling=True)
+
+        st.divider()
+        st.markdown("**Raw data (CSV)**")
         approved = get_entries(student_id, statuses=["approved"])
         ga = get_assignments(student_id)
         hist = get_assessments(student_id)
-        base = student_row["name"].replace(" ", "_")
         if not approved.empty:
             approved_csv = approved.drop(columns=["student_id"]).copy()
             approved_csv["entry_date"] = approved_csv["entry_date"].apply(fmt_date)
