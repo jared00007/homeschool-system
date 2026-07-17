@@ -22,3 +22,8 @@
 
 ## Record keeping
 - This system's own tracker app (see /tracker) — no external link needed
+
+## Benefits, tax accounts & discounts
+- See `resources/benefits-and-discounts.md` — Coverdell ESA, 529, museum
+  passes, Every Kid Outdoors NPS pass, WIAA extracurricular access, Running
+  Start

@@ -5,6 +5,8 @@ parent assigned main project? something fun?
 can we include some social situational awareness for sutdent who struggles with some basics
 ---adds---
 lets build and incorporate healthy daily tasks like strecthing. taking walk breaks etc. think of other healthy ideas for a daily calendar task
+pull in the retail/membership discount card list (from the separate "Project assistance needed" chat) into resources/benefits-and-discounts.md once its contents are shared — see "Still needed" section there
+consider whether the DOI reminder in the Parent Console should also store the chosen qualification method + filing date (currently only stores a per-year dismiss flag, see app.py get_doi_reminder) so the record is more than just a dismissed banner
 
 ---removal---
 

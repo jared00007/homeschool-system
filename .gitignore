@@ -11,3 +11,5 @@ tracker/venv/
 .DS_Store
 **/.DS_Store
 app-links.txt
+tracker/homeschool.db.bak-*
+tracker/homeschool.db.pre-rollback-*

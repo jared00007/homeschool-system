@@ -4078,6 +4078,17 @@ button[kind="primary"]:hover, button[kind="secondary"]:hover {
 .st-key-nav_extras button[kind="primary"] { background: #FF5FA2 !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
 .st-key-nav_more button[kind="secondary"] { background: #E3D3F9 !important; color: #1A1610 !important; }
 .st-key-nav_more button[kind="primary"] { background: #B084F0 !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
+/* Parent nav — same Always-On Color treatment, one color per group. */
+.st-key-pnav_daily button[kind="secondary"] { background: #BEE7F7 !important; color: #1A1610 !important; }
+.st-key-pnav_daily button[kind="primary"] { background: #4FC3E8 !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
+.st-key-pnav_progress button[kind="secondary"] { background: #CFF0D3 !important; color: #1A1610 !important; }
+.st-key-pnav_progress button[kind="primary"] { background: #6FCF7A !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
+.st-key-pnav_content button[kind="secondary"] { background: #FCE9C7 !important; color: #1A1610 !important; }
+.st-key-pnav_content button[kind="primary"] { background: #F5B841 !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
+.st-key-pnav_records button[kind="secondary"] { background: #FCD3E6 !important; color: #1A1610 !important; }
+.st-key-pnav_records button[kind="primary"] { background: #FF5FA2 !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
+.st-key-pnav_setup button[kind="secondary"] { background: #E3D3F9 !important; color: #1A1610 !important; }
+.st-key-pnav_setup button[kind="primary"] { background: #B084F0 !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
 [data-testid="stSidebar"] .stButton button { margin-bottom: 2px; }
 </style>
 """, unsafe_allow_html=True)
@@ -4124,37 +4135,59 @@ with st.sidebar:
         student_row = None
         st.info("No student yet — add one in Parent mode.")
 
+    # Shared grouped-button sidebar nav, used by both Student and Parent
+    # modes. state_key is the st.session_state field the group drives
+    # ("student_view" or "parent_view"), so the two navs stay independent.
+    def _nav_group(label, items, key, state_key):
+        st.markdown(f'<div style="font-size:13px;font-weight:900;letter-spacing:.06em;'
+                   f'text-transform:uppercase;color:#1A1610;margin:12px 0 6px">{label}</div>',
+                   unsafe_allow_html=True)
+        with st.container(key=key):
+            for view_label, icon in items:
+                is_on = st.session_state[state_key] == view_label
+                if st.button(f"{icon} {view_label}", key=f"{key}_{view_label}",
+                            use_container_width=True,
+                            type="primary" if is_on else "secondary"):
+                    st.session_state[state_key] = view_label
+                    st.rerun()
+
     if mode == "🎒 Student":
         if "student_view" not in st.session_state:
             st.session_state.student_view = "Today"
 
-        def _nav_group(label, items, key):
-            st.markdown(f'<div style="font-size:13px;font-weight:900;letter-spacing:.06em;'
-                       f'text-transform:uppercase;color:#1A1610;margin:12px 0 6px">{label}</div>',
-                       unsafe_allow_html=True)
-            with st.container(key=key):
-                for view_label, icon in items:
-                    is_on = st.session_state.student_view == view_label
-                    if st.button(f"{icon} {view_label}", key=f"{key}_{view_label}",
-                                use_container_width=True,
-                                type="primary" if is_on else "secondary"):
-                        st.session_state.student_view = view_label
-                        st.rerun()
-
         _nav_group("📅 Schedule & Quests", [
             ("Today", "📅"), ("My Week", "🗓"), ("Calendar", "📆"), ("Quest Board", "🗺️")],
-            "nav_schedule")
+            "nav_schedule", "student_view")
         _nav_group("🎯 Learning", [
             ("Electives & Books", "🎯"), ("Quizzes", "📝"), ("My Grades", "🏆")],
-            "nav_learning")
+            "nav_learning", "student_view")
         _nav_group("🧳 Extras", [
             ("Travel Log", "🧳"), ("Resources", "📎")],
-            "nav_extras")
+            "nav_extras", "student_view")
         _nav_group("⋯ More", [
             ("Day 1 Checklist", "🚀"), ("8th Grade Scope", "📋"), ("My Logins", "🔑")],
-            "nav_more")
+            "nav_more", "student_view")
 
     if mode == "🔑 Parent":
+        if "parent_view" not in st.session_state:
+            st.session_state.parent_view = "Review & Approve"
+
+        _nav_group("📅 Daily Work", [
+            ("Review & Approve", "🕓"), ("Manual Log", "📝"), ("Grading", "🎓")],
+            "pnav_daily", "parent_view")
+        _nav_group("📊 Progress", [
+            ("Dashboard", "📊"), ("Curriculum", "📚"), ("8th Grade Scope", "📋")],
+            "pnav_progress", "parent_view")
+        _nav_group("🎯 Content", [
+            ("Quest Board", "🗺️"), ("Travel Log", "🧳")],
+            "pnav_content", "parent_view")
+        _nav_group("🗄️ Records", [
+            ("Accounts", "🔑"), ("Assessments", "✅"), ("Export", "⬇️")],
+            "pnav_records", "parent_view")
+        _nav_group("⚙️ Setup", [
+            ("Launch Checklist", "🚀"), ("Settings", "⚙️"), ("Resources", "📎")],
+            "pnav_setup", "parent_view")
+
         with st.expander("➕ Add a student"):
             n = st.text_input("Name", key="add_name")
             g = st.text_input("Grade (e.g. 8th)", key="add_grade")
@@ -4629,20 +4662,18 @@ else:
                 setting_set(f"doi_dismissed_{doi_school_year}", "1")
                 st.rerun()
 
-    (t_checklist, t_review, t_log, t_grading, t_dash, t_cov, t_scope, t_fun,
-     t_parks, t_accounts, t_assess, t_export, t_settings, t_resources) = st.tabs(
-        ["🚀 Launch Checklist", "🕓 Review & Approve", "📝 Manual Log", "🎓 Grading",
-         "📊 Dashboard", "📚 Curriculum", "📋 8th Grade Scope", "🗺️ Quest Board",
-         "🗺️ Travel Log", "🔑 Accounts", "✅ Assessments", "⬇️ Export",
-         "⚙️ Settings", "📎 Resources"])
+    # Parent panes are now driven by the sidebar nav (st.session_state.
+    # parent_view) instead of st.tabs — one pane renders per run, mirroring
+    # the Student view. school_year is set once here so every branch has it.
+    school_year = student_row["school_year"] or "current"
+    parent_view = st.session_state.get("parent_view", "Review & Approve")
 
     # ---- Launch Checklist
-    with t_checklist:
-        school_year = student_row["school_year"] or "current"
+    if parent_view == "Launch Checklist":
         render_launch_checklist(student_id, school_year)
 
     # ---- Review & Approve
-    with t_review:
+    elif parent_view == "Review & Approve":
         pending = get_entries(student_id, statuses=["pending"])
         st.subheader(f"Pending entries ({len(pending)})")
         st.caption("Only APPROVED hours count toward the 1,000-hour / 180-day requirement.")
@@ -4669,7 +4700,7 @@ else:
                         st.rerun()
 
     # ---- Manual Log (auto-approved)
-    with t_log:
+    elif parent_view == "Manual Log":
         st.subheader("Add an entry (auto-approved)")
         st.caption("Field trips, co-op days, catch-up work, anything outside the standard blocks.")
         c1, c2, c3 = st.columns(3)
@@ -4707,7 +4738,7 @@ else:
                     st.rerun()
 
     # ---- Grading
-    with t_grading:
+    elif parent_view == "Grading":
         st.subheader("Record a grade")
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -4789,7 +4820,7 @@ else:
                     st.rerun()
 
     # ---- Dashboard (approved hours only)
-    with t_dash:
+    elif parent_view == "Dashboard":
         approved = get_entries(student_id, statuses=["approved"])
         st.subheader("Compliance progress (approved hours only)")
         if approved.empty:
@@ -4830,7 +4861,7 @@ else:
         render_support_resources(student_id)
 
     # ---- Curriculum
-    with t_cov:
+    elif parent_view == "Curriculum":
         st.subheader("WA's 11 required subject areas")
         approved = get_entries(student_id, statuses=["approved"])
         for s in WA_SUBJECTS:
@@ -4853,18 +4884,18 @@ else:
         render_proposals_review(student_id, school_year)
 
     # ---- 8th Grade Scope
-    with t_scope:
+    elif parent_view == "8th Grade Scope":
         render_scope_reference()
 
     # ---- Quest Board
-    with t_fun:
+    elif parent_view == "Quest Board":
         school_year = student_row["school_year"] or "current"
         render_fun_projects_picker(student_id, school_year, key_prefix="parent")
         st.divider()
         render_fun_project_pool_admin()
 
     # ---- Travel Log
-    with t_parks:
+    elif parent_view == "Travel Log":
         school_year = student_row["school_year"] or "current"
         render_travel_log(student_id, school_year, key_prefix="parent")
         st.divider()
@@ -4873,12 +4904,12 @@ else:
         render_major_city_pool_admin()
 
     # ---- Accounts
-    with t_accounts:
+    elif parent_view == "Accounts":
         school_year = student_row["school_year"] or "current"
         render_accounts_checklist(student_id, school_year)
 
     # ---- Assessments
-    with t_assess:
+    elif parent_view == "Assessments":
         st.subheader("Annual assessment record")
         with st.expander("📜 What WA law actually requires", expanded=False):
             st.markdown(WA_ASSESSMENT_LAW)
@@ -4927,7 +4958,7 @@ else:
                          hide_index=True)
 
     # ---- Export
-    with t_export:
+    elif parent_view == "Export":
         st.subheader("Export records")
         approved = get_entries(student_id, statuses=["approved"])
         ga = get_assignments(student_id)
@@ -4954,9 +4985,9 @@ else:
         st.caption("These become the annual compliance packet and, later, transcript source data.")
 
     # ---- Settings
-    with t_settings:
+    elif parent_view == "Settings":
         st.caption("Schedule, curriculum links, and weekly hour targets are constants "
                    "near the top of app.py — edit that file to change the plan.")
 
-    with t_resources:
+    elif parent_view == "Resources":
         render_resources_tab(parent_mode=True)
