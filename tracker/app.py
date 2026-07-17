@@ -2186,6 +2186,30 @@ QUEST_CARD_CSS = """
 .qcard-mess i { width: 5px; height: 5px; border-radius: 50%; display: inline-block;
   margin-left: 2px; background: #1A161022; }
 .qcard-mess i.on { background: #E8402C; }
+
+/* Sprint board — Today and My Week render as columns of cards rather than a
+   vertical list. Same ink-border/pop-color language as the quest cards, but
+   compact enough that a whole day (or week) fits on one screen: the point is
+   seeing work *move* from To Do to Done, which a list can't show. */
+.slane { border: 3px solid #1A1610; border-radius: 8px; background: #FFFDF6cc;
+  padding: 8px; min-height: 60px; box-shadow: 3px 3px 0 #1A1610; }
+.slane-head { font-weight: 900; font-size: 12px; letter-spacing: .06em;
+  text-transform: uppercase; color: #1A1610; padding: 3px 8px; margin-bottom: 8px;
+  border: 2px solid #1A1610; border-radius: 20px; display: inline-block;
+  background: #FFD23F; }
+.slane-head.done { background: #6FCF7A; }
+.slane-head.today { background: #FF5FA2; }
+.bcard { border: 3px solid #1A1610; border-radius: 6px; background: #FFFDF6;
+  box-shadow: 2px 2px 0 #1A1610; margin-bottom: 8px; overflow: hidden;
+  transition: transform .12s ease; }
+.bcard:hover { transform: translate(-1px, -1px); box-shadow: 3px 3px 0 #1A1610; }
+.bcard-strip { height: 7px; border-bottom: 2px solid #1A1610; }
+.bcard-in { padding: 7px 9px 8px; }
+.bcard-t { font-weight: 800; font-size: 13px; color: #1A1610; line-height: 1.25; }
+.bcard-when { font-size: 10px; color: #6b6152; font-weight: 700; }
+.bcard-badge { font-size: 10px; font-weight: 800; }
+.bcard.is-done { opacity: .62; }
+.bcard.is-done .bcard-t { text-decoration: line-through; }
 </style>
 """
 
@@ -2224,6 +2248,30 @@ def render_quest_card(p, status):
               <span class="qcard-hours">{hours:.1f} HRS</span>
               <span class="qcard-mess">{dots}</span>
             </div>
+          </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+
+def render_block_card(subject, start=None, end=None, status=None, struggled=False):
+    """One schedule block as a small board card. Visual only — the caller adds
+    the real st.button()s beneath, same arrangement as render_quest_card."""
+    color = QUEST_SUBJECT_COLORS.get(subject, "#FFD23F")
+    title = escape_html(QUEST_TITLES.get(subject, subject))
+    when = (f"{format_time12(start)} – {format_time12(end)}"
+            if start and end else "")
+    badge = {"pending": "🕓 waiting on parent", "approved": "✅ approved",
+             "rejected": "❌ sent back"}.get(status, "")
+    if struggled:
+        badge += " · 😕"
+    done_cls = " is-done" if status in ("pending", "approved") else ""
+    st.markdown(f"""
+        <div class="bcard{done_cls}">
+          <div class="bcard-strip" style="background:{color}"></div>
+          <div class="bcard-in">
+            <div class="bcard-t">{title}</div>
+            <div class="bcard-when">{when}</div>
+            <div class="bcard-badge">{badge}</div>
           </div>
         </div>
     """, unsafe_allow_html=True)
@@ -4001,26 +4049,15 @@ def render_health_habits_checkin(student_id):
             st.success(f"🔥 {streak}-day streak — you've checked in "
                        f"{streak} day{'s' if streak != 1 else ''} running.")
 
-        with st.expander("💬 Want to say more? (totally optional)"):
-            lesson_feedback = st.text_input(
-                "Anything hard, unclear, or that could be better?",
-                value=h["lesson_feedback"],
-                key=f"health_lesson_feedback_{today.isoformat()}",
-                placeholder="Only if the chips above didn't cover it")
-            if lesson_feedback != h["lesson_feedback"]:
-                set_lesson_reflection(student_id, today, h["lesson_score"],
-                                      lesson_feedback.strip())
-
+        with st.expander("📓 Journal (optional)"):
             journal_text = st.text_area(
                 "Journal", value=h["journal"],
                 key=f"health_journal_{today.isoformat()}",
+                label_visibility="collapsed",
                 placeholder="Anything on your mind. Nobody reads this but you "
                             "and your parent.", height=100)
             if journal_text != h["journal"]:
                 set_health_journal(student_id, today, journal_text)
-
-        st.caption("This week:")
-        _week_habit_grid(student_id, today)
     return is_done
 
 
@@ -4072,7 +4109,8 @@ def render_health_habits_summary(student_id):
                 st.caption("Roughest subject: " + ", ".join(
                     f"{s} ×{n}" for s, n in counts.items()))
 
-    st.caption("This week:")
+    st.caption("Habit boxes he ticked, Mon–Sun — ✅ all four · 🟡 some · "
+               "▫️ none · ⬛ not here yet")
     _week_habit_grid(student_id, date.today())
 
     has_content = (week_df["journal"].fillna("").str.strip().ne("")
@@ -4589,6 +4627,144 @@ if not parent_mode:
                         text=f"{done_ct} / {len(blocks)} blocks logged")
         return done_ct, len(blocks)
 
+    def _day_context(d):
+        """Shared setup for the board views: the day's blocks plus the bits
+        each card needs to describe itself. Returns None on a no-school day
+        (the caller has already been told why)."""
+        school_year = student_row["school_year"] or "current"
+        holiday_label = get_holiday_for_date(school_year, d)
+        if holiday_label:
+            st.success(f"🎉 No school today — {holiday_label}")
+            return None
+        blocks = WEEKLY_SCHEDULE.get(d.strftime("%A"))
+        if not blocks:
+            st.info("No school scheduled on this day. 🎉")
+            return None
+        books = get_student_books(student_id, school_year)
+        current_book = None
+        if not books.empty:
+            reading = books[books["status"] == "reading"]
+            if not reading.empty:
+                current_book = reading.iloc[0]
+        items = []
+        for block in blocks:
+            subject, start, end = block[0], block[1], block[2]
+            entry = get_block_entry(student_id, d, subject, start)
+            items.append({
+                "subject": subject, "start": start, "end": end,
+                "resource_key": block[3] if len(block) > 3 else subject,
+                "entry": entry,
+                "status": entry["status"] if entry is not None else None,
+                "struggled": bool(entry.get("struggled")) if entry is not None else False,
+            })
+        return {"items": items, "school_year": school_year,
+                "current_book": current_book,
+                "electives": get_student_electives(student_id, school_year),
+                "elective_pool": get_elective_pool_dict()}
+
+    def render_today_board(d, key_prefix):
+        """Today as a two-lane sprint board: cards start in To Do and move to
+        Done as he logs them. Returns (done, total).
+
+        A flat list gave a 13-year-old no sense of progress — the whole point
+        here is watching work physically move across the board.
+        """
+        ctx = _day_context(d)
+        if ctx is None:
+            return 0, 0
+        items = ctx["items"]
+        todo = [i for i in items if i["status"] is None]
+        done = [i for i in items if i["status"] is not None]
+
+        lane_todo, lane_done = st.columns(2)
+        with lane_todo:
+            st.markdown(f'<div class="slane-head">🎯 To do ({len(todo)})</div>',
+                        unsafe_allow_html=True)
+            if not todo:
+                st.markdown("**Board's clear.** Nothing left. 🎉")
+            for it in todo:
+                subject, start, end = it["subject"], it["start"], it["end"]
+                render_block_card(subject, start, end, it["status"], it["struggled"])
+                if subject == "Electives":
+                    if ctx["electives"].empty:
+                        st.caption("No electives picked yet — grab some in "
+                                   "🎯 Electives & Books.")
+                        done_label = "elective work"
+                    else:
+                        for _, e in ctx["electives"].iterrows():
+                            info = ctx["elective_pool"].get(e["elective_name"])
+                            if info:
+                                st.markdown(f"🔗 [{e['elective_name']}]({info[1]})")
+                        done_label = ", ".join(ctx["electives"]["elective_name"])
+                else:
+                    res = CURRICULUM_RESOURCES.get(
+                        it["resource_key"],
+                        CURRICULUM_RESOURCES.get(subject,
+                                                 CURRICULUM_RESOURCES["Electives"]))
+                    st.markdown(f"🔗 [{res[0]}]({res[1]})")
+                    done_label = res[0]
+                    if subject == "Reading" and ctx["current_book"] is not None:
+                        st.caption(f"📖 {ctx['current_book']['title']}")
+                    steps = res[3] if len(res) > 3 else []
+                    if steps:
+                        with st.expander("📋 What to do"):
+                            for i, step in enumerate(steps, start=1):
+                                st.markdown(f"{i}. {step}")
+                b1, b2 = st.columns(2)
+                if b1.button("✅ Got it", use_container_width=True,
+                             key=f"{key_prefix}_{d.isoformat()}_{subject}_{start}"):
+                    add_entry(student_id, d, subject, block_hours(start, end),
+                              f"Completed via {done_label}", "Instruction",
+                              "pending", struggled=False, block_start=start)
+                    st.rerun()
+                if b2.button("😕 Fuzzy", use_container_width=True,
+                             key=f"{key_prefix}_fuzzy_{d.isoformat()}_{subject}_{start}"):
+                    add_entry(student_id, d, subject, block_hours(start, end),
+                              f"Completed via {done_label}", "Instruction",
+                              "pending", struggled=True, block_start=start)
+                    st.rerun()
+                st.markdown("")
+        with lane_done:
+            st.markdown(f'<div class="slane-head done">✅ Done ({len(done)})</div>',
+                        unsafe_allow_html=True)
+            if not done:
+                st.caption("Nothing here yet. Move a card over. 👉")
+            for it in done:
+                render_block_card(it["subject"], it["start"], it["end"],
+                                  it["status"], it["struggled"])
+        return len(done), len(items)
+
+    def render_week_board(d):
+        """The week as a five-lane board, one lane per school day, so he can
+        see the whole sprint at once and today in context. Read-only —
+        marking work off happens on Today."""
+        school_year = student_row["school_year"] or "current"
+        monday = d - timedelta(days=d.weekday())
+        days = [monday + timedelta(days=i) for i in range(5)]
+        lanes = st.columns(5)
+        for lane, day in zip(lanes, days):
+            with lane:
+                is_today = day == d
+                st.markdown(
+                    f'<div class="slane-head{" today" if is_today else ""}">'
+                    f'{day.strftime("%a")} {day.day}{" 👈" if is_today else ""}</div>',
+                    unsafe_allow_html=True)
+                holiday = get_holiday_for_date(school_year, day)
+                if holiday:
+                    st.caption(f"🎉 {holiday}")
+                    continue
+                blocks = WEEKLY_SCHEDULE.get(day.strftime("%A")) or []
+                if not blocks:
+                    st.caption("—")
+                    continue
+                for block in blocks:
+                    subject, start, end = block[0], block[1], block[2]
+                    entry = get_block_entry(student_id, day, subject, start)
+                    status = entry["status"] if entry is not None else None
+                    render_block_card(subject, start, end, status,
+                                      bool(entry.get("struggled")) if entry is not None
+                                      else False)
+
     if st.session_state.student_view == "Day 1 Checklist":
         school_year = student_row["school_year"] or "current"
         render_day1_checklist(student_id, school_year)
@@ -4629,8 +4805,8 @@ if not parent_mode:
 
         if d in KEY_DATES:
             st.warning(KEY_DATES[d])
-        blocks_done, blocks_total = render_day_blocks(
-            d, allow_marking=True, key_prefix="today", show_progress=False)
+        st.markdown(QUEST_CARD_CSS, unsafe_allow_html=True)
+        blocks_done, blocks_total = render_today_board(d, key_prefix="today")
 
         qsubj, qtopic = suggest_quiz_for_day(student_id, d)
         if qsubj:
@@ -4817,23 +4993,25 @@ if not parent_mode:
         render_day_blocks(pick, allow_marking=allow, key_prefix="cal")
 
     elif st.session_state.student_view == "My Week":
-        st.subheader("Weekly schedule")
-        for day, blocks in WEEKLY_SCHEDULE.items():
-            hl = " 👈 today" if day == date.today().strftime("%A") else ""
-            with st.expander(f"**{day}**{hl}",
-                             expanded=(day == date.today().strftime("%A"))):
-                for block in blocks:
-                    subject, start, end = block[0], block[1], block[2]
-                    resource_key = block[3] if len(block) > 3 else subject
-                    res = CURRICULUM_RESOURCES.get(resource_key,
-                        CURRICULUM_RESOURCES.get(subject, CURRICULUM_RESOURCES["Electives"]))
-                    dot_color = QUEST_SUBJECT_COLORS.get(subject, "#FFD23F")
-                    st.markdown(
-                        f'<span style="color:{dot_color};font-size:16px">●</span> '
-                        f'**{QUEST_TITLES.get(subject, subject)}** — [{res[0]}]({res[1]})',
-                        unsafe_allow_html=True)
-                    if res[2]:
-                        st.caption(res[2])
+        _d = date.today()
+        _monday = _d - timedelta(days=_d.weekday())
+        st.subheader(f"🗓️ This week's board "
+                     f"({_monday.strftime('%b %d')} – "
+                     f"{(_monday + timedelta(days=4)).strftime('%b %d')})")
+        st.markdown(QUEST_CARD_CSS, unsafe_allow_html=True)
+        _wk_done = sum(
+            1 for i in range(5)
+            for b in (WEEKLY_SCHEDULE.get((_monday + timedelta(days=i)).strftime("%A")) or [])
+            if get_block_entry(student_id, _monday + timedelta(days=i), b[0], b[1]) is not None)
+        _wk_total = sum(
+            len(WEEKLY_SCHEDULE.get((_monday + timedelta(days=i)).strftime("%A")) or [])
+            for i in range(5))
+        if _wk_total:
+            st.progress(_wk_done / _wk_total,
+                        text=f"{_wk_done} / {_wk_total} cards cleared this week")
+        st.caption("Faded, struck-through cards are ones you've already logged. "
+                   "Mark work off over on 📅 Today.")
+        render_week_board(_d)
 
     elif st.session_state.student_view == "8th Grade Scope":
         render_scope_reference()
