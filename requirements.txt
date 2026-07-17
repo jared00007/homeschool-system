@@ -1,3 +1,8 @@
 streamlit>=1.35
 pandas>=2.0
 plotly>=5.20
+# Postgres backend — used only when DATABASE_URL is set (i.e. hosted).
+# db_backend.connect_database falls back to local SQLite when it isn't, so
+# these are harmless locally.
+psycopg2-binary>=2.9
+SQLAlchemy>=2.0

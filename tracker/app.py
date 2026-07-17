@@ -5364,19 +5364,36 @@ with st.sidebar:
         '<span style="font-size:22px;font-weight:900;color:#1A1610;'
         f'font-style:italic">🧭 {APP_NAME}</span></div>',
         unsafe_allow_html=True)
-    # Parent mode is only offered to whoever's on this Mac itself
-    # (localhost) — devices reached over the LAN address (Landon's
-    # laptop/phone) see Student mode only, no toggle at all.
+    # Parent vs Student gate.
+    #  - Local (the family Mac): the parent toggle shows freely, as before —
+    #    LAN devices (Landon's laptop/phone) still only see Student.
+    #  - Hosted (a real server, where everyone is "non-local"): the localhost
+    #    trick can't tell parent from kid, so parent mode is unlocked with a
+    #    passcode from the PARENT_PASSCODE env var (or a parent_passcode
+    #    setting). No passcode configured on a host = Student-only, which is
+    #    the safe default.
     client_ip = st.context.ip_address
     is_local = client_ip in (None, "127.0.0.1", "::1", "localhost")
-    # A link from the Parent Console ("Open Student View") opens a new tab
-    # at ?view=student — force Student mode there even on localhost, so it
-    # always lands cleanly instead of showing the mode toggle.
     force_student = st.query_params.get("view") == "student"
+    parent_passcode = os.getenv("PARENT_PASSCODE") or setting_get("parent_passcode")
+
     if is_local and not force_student:
-        # This Mac is the parent's launch point, so default to Parent mode
-        # on load rather than Student.
         mode = st.radio("Mode", ["🔑 Parent", "🎒 Student"], label_visibility="collapsed")
+    elif parent_passcode and not force_student:
+        if st.session_state.get("parent_unlocked"):
+            mode = st.radio("Mode", ["🔑 Parent", "🎒 Student"],
+                            label_visibility="collapsed")
+        else:
+            mode = "🎒 Student"
+            with st.expander("🔑 Parent access"):
+                code = st.text_input("Passcode", type="password",
+                                     key="parent_passcode_input")
+                if st.button("Unlock"):
+                    if code == parent_passcode:
+                        st.session_state["parent_unlocked"] = True
+                        st.rerun()
+                    else:
+                        st.error("Wrong passcode.")
     else:
         mode = "🎒 Student"
 

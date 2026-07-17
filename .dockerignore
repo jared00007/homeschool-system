@@ -1,0 +1,15 @@
+.git
+.venv
+venv
+tracker/venv
+**/__pycache__
+*.pyc
+tracker/homeschool.db
+tracker/homeschool.db.*
+tracker/uploads
+.streamlit/secrets.toml
+cloud-archive
+archive
+curriculum
+resources
+*.md
