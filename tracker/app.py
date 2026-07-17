@@ -1803,9 +1803,17 @@ def get_conn():
                 (book["title"], book["author"], book["ties_to"], book["link"]))
     if conn.execute("SELECT COUNT(*) FROM fun_project_pool").fetchone()[0] == 0:
         for proj in DEFAULT_FUN_PROJECTS:
-            conn.execute("""INSERT INTO fun_project_pool (title, subject, description)
-                VALUES (?, ?, ?)""",
-                (proj["title"], proj["subject"], proj["description"]))
+            # subjects (the comma-list the app actually reads) mirrors subject,
+            # so a fresh DB never has NULL subjects — the column-add backfill
+            # above only runs when the column is newly added, not on a DB
+            # created with it already present.
+            conn.execute("""INSERT INTO fun_project_pool (title, subjects, subject, description)
+                VALUES (?, ?, ?, ?)""",
+                (proj["title"], proj["subject"], proj["subject"], proj["description"]))
+    # Heal any legacy rows seeded with NULL subjects before the line above set
+    # them (idempotent, cheap, runs every startup).
+    conn.execute("UPDATE fun_project_pool SET subjects = subject "
+                 "WHERE subjects IS NULL AND subject IS NOT NULL")
     # Quest Log starter projects, added incrementally (unlike the seed block
     # above, this runs every startup and only inserts titles not already
     # present) since fun_project_pool may already be populated from before.
@@ -3629,8 +3637,12 @@ def render_fun_projects_picker(student_id, school_year, key_prefix):
     pool = get_fun_project_pool_df()
     tag_map = {}
     for _, proj in pool.iterrows():
-        tags = [t.strip() for t in (proj["subjects"] or proj["subject"] or "").split(",")
-               if t.strip()]
+        # NaN-safe: a pandas NULL is a float, which is truthy, so the old
+        # `a or b or ""` returned the NaN and .split() blew up. Pick the first
+        # value that's actually a non-empty string.
+        raw = next((v for v in (proj["subjects"], proj["subject"])
+                    if isinstance(v, str) and v.strip()), "")
+        tags = [t.strip() for t in raw.split(",") if t.strip()]
         for tag in tags:
             tag_map.setdefault(tag, []).append(proj)
     for subj in sorted(tag_map):
