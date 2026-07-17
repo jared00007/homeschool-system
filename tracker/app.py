@@ -1,9 +1,11 @@
 """
-Homeschool One-Stop — schedule, curriculum links, hour logging with parent
-approval, grading, and WA DOI compliance tracking in a single local app.
+Compass — a homeschool curriculum platform that blends a Passion Track
+(interest-led projects) with a Foundations Track (life skills + financial
+literacy) into one parent-controlled weekly plan, on top of the original
+schedule, hour-logging-with-parent-approval, grading, and WA compliance base.
 
 Run with:  streamlit run app.py
-Data lives in homeschool.db next to this file. Nothing leaves your machine.
+Data lives in homeschool.db next to this file (or Postgres via DATABASE_URL).
 
 Modes:
   - Student (default): sees today's agenda + links, marks blocks complete
@@ -50,10 +52,21 @@ if DB_BACKEND:
     DB_PATH = None
 
 # ------------------------------------------------------------- constants
+# Product identity (working name — swap freely per the strategy doc).
+APP_NAME = "Compass"
+APP_TAGLINE = "A curriculum that follows the kid, not the textbook"
+
 WA_SUBJECTS = [
     "Occupational Education", "Science", "Mathematics",
     "Language (Reading/Writing/Spelling)", "Social Studies", "History",
     "Health", "Reading", "Writing", "Spelling", "Art & Music Appreciation",
+]
+
+# Foundations Track pillars (the doc's mandatory life-skills half). Each
+# foundations_modules row is tagged to one of these.
+FOUNDATIONS_PILLARS = [
+    "Financial Literacy", "Digital Literacy", "Career Readiness",
+    "Health & Wellness", "Life Skills", "Civics",
 ]
 
 REQUIRED_HOURS = 1000
@@ -1471,6 +1484,38 @@ def get_conn():
         report_date TEXT NOT NULL, url TEXT NOT NULL, description TEXT,
         status TEXT DEFAULT 'pending', parent_note TEXT, resolved_date TEXT,
         submitted_at TEXT,
+        FOREIGN KEY (student_id) REFERENCES students (id))""")
+    # Compass two-track model:
+    #  - foundations_modules: the hand-curated life-skills/finance library (the
+    #    doc's differentiator). subjects uses exact WA_SUBJECTS tags so a
+    #    completion attributes compliance hours exactly like a finished quest.
+    #  - student_foundations_progress: per-student completion, with the same
+    #    hours_logged idempotency flag as student_fun_projects.
+    #  - passion_profile: the interest/values intake result, one row per student.
+    #  - weekly_plan_items: the blender's output for a given (student, week),
+    #    each item pointing back at a quest (passion) or a module (foundations).
+    conn.execute("""CREATE TABLE IF NOT EXISTS foundations_modules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL UNIQUE,
+        pillar TEXT NOT NULL, description TEXT, objectives TEXT, activities TEXT,
+        subjects TEXT, est_hours REAL DEFAULT 1.0, source_url TEXT,
+        sort_order INTEGER DEFAULT 0, active INTEGER DEFAULT 1)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS student_foundations_progress (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
+        module_id INTEGER NOT NULL, status TEXT DEFAULT 'assigned',
+        completed_at TEXT, hours_logged INTEGER DEFAULT 0,
+        UNIQUE(student_id, module_id),
+        FOREIGN KEY (student_id) REFERENCES students (id),
+        FOREIGN KEY (module_id) REFERENCES foundations_modules (id))""")
+    # NB: "values" is a reserved SQL keyword — the column is core_values.
+    conn.execute("""CREATE TABLE IF NOT EXISTS passion_profile (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL UNIQUE,
+        interests TEXT, core_values TEXT, updated_at TEXT,
+        FOREIGN KEY (student_id) REFERENCES students (id))""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS weekly_plan_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
+        week_start TEXT NOT NULL, kind TEXT NOT NULL, ref_id INTEGER,
+        title TEXT, subjects TEXT, est_hours REAL DEFAULT 1.0,
+        status TEXT DEFAULT 'planned', sort_order INTEGER DEFAULT 0,
         FOREIGN KEY (student_id) REFERENCES students (id))""")
     # migration: older DBs may lack the status/submitted_at columns
     cols = table_columns(conn, "log_entries")
@@ -4339,7 +4384,7 @@ def render_day1_checklist(student_id, school_year):
 
 
 # ------------------------------------------------------------- app shell
-st.set_page_config(page_title="Homeschool", page_icon="📚", layout="wide")
+st.set_page_config(page_title=APP_NAME, page_icon="🧭", layout="wide")
 
 # Comic Log — applied app-wide so every bordered panel (Today's blocks, the
 # Current Quest card, etc.) reads as a comic panel, not just the Quest Board
@@ -4408,7 +4453,7 @@ with st.sidebar:
         'margin-bottom:8px;background:linear-gradient(135deg,#FFD23F,#FF9F45);'
         'box-shadow:4px 4px 0 #1A1610">'
         '<span style="font-size:22px;font-weight:900;color:#1A1610;'
-        'font-style:italic">📚 Homeschool</span></div>',
+        f'font-style:italic">🧭 {APP_NAME}</span></div>',
         unsafe_allow_html=True)
     # Parent mode is only offered to whoever's on this Mac itself
     # (localhost) — devices reached over the LAN address (Landon's
