@@ -3538,8 +3538,12 @@ def render_passion_intake(student_id, key_prefix):
     with st.expander("✨ What are you into? (helps pick your quests)",
                      expanded=not has_profile):
         st.caption("Tap everything that sounds like you. Change it whenever.")
+        # st.pills raises if a default isn't one of the options, so drop any
+        # saved interest that's no longer in INTEREST_OPTIONS (e.g. the list
+        # was edited, or older/imported data) rather than crashing the page.
+        saved_interests = [i for i in prof["interests"] if i in INTEREST_OPTIONS]
         interests = st.pills("Interests", INTEREST_OPTIONS, selection_mode="multi",
-                            default=prof["interests"],
+                            default=saved_interests,
                             key=f"{key_prefix}_interests",
                             label_visibility="collapsed")
         interests = interests or []
@@ -4954,8 +4958,9 @@ def render_health_habits_checkin(student_id):
 
         st.caption("Anything get in the way? Tap what fits — or don't, "
                    "if it was all fine.")
+        saved_friction = [t for t in h["friction_tags"] if t in FRICTION_TAGS]
         picked = st.pills("Friction", FRICTION_TAGS, selection_mode="multi",
-                          default=h["friction_tags"],
+                          default=saved_friction,
                           key=f"health_friction_{today.isoformat()}",
                           label_visibility="collapsed")
         picked = picked or []
