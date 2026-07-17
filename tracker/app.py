@@ -677,6 +677,46 @@ DEFAULT_MAJOR_CITIES = [
     ("Spokane", "Washington", 47.6588, -117.4260),
 ]
 
+# Smithsonian Learning Lab collections — free, no login needed to browse, and
+# all Smithsonian-created and filtered to the middle-school (13-15) age band,
+# which is Landon's. Deliberately specific collections rather than a saved
+# search URL: search links carry filter params that rot, whereas a collection
+# URL keeps working. Seeded into curriculum_materials as links, so they show up
+# in the Resources tab like any other material a parent adds. Browse for more
+# at: https://learninglab.si.edu/search/?st=&f[_types][]=ll_collection
+SMITHSONIAN_LEARNING_LAB_SEEDS = [
+    {"title": "Smithsonian: Exploring Identity through Portraiture",
+     "subject": "Art & Music Appreciation",
+     "url": "https://learninglab.si.edu/collections/exploring-identity-through-portraiture/AfsekHKtni1NAfE6",
+     "notes": "National Portrait Gallery — how artists show who someone is. "
+              "Good jumping-off point for character design."},
+    {"title": "Smithsonian: Creating Portraits of Community",
+     "subject": "Art & Music Appreciation",
+     "url": "https://learninglab.si.edu/collections/creating-portraits-of-community/RVD97As4BrMxSv3P",
+     "notes": "National Portrait Gallery — make a portrait of the people and "
+              "places around you."},
+    {"title": "Smithsonian: Digital Storytelling",
+     "subject": "Writing",
+     "url": "https://learninglab.si.edu/collections/digital-storytelling-for-classroom-engagement-companion-collection-for-a-smithsonian-national-education-summit-presentation/QndpD0aco1G7Nk5F",
+     "notes": "Telling a real story with video and images — same muscles as "
+              "making a short."},
+    {"title": "Smithsonian: Visualizing Democracy",
+     "subject": "Social Studies",
+     "url": "https://learninglab.si.edu/collections/visualizing-democracy/bLxR9cwU5da7UFW5",
+     "notes": "National Portrait Gallery — civics told through pictures "
+              "instead of textbook paragraphs."},
+    {"title": "Smithsonian: Investigating Civic Ideals through Art",
+     "subject": "Social Studies",
+     "url": "https://learninglab.si.edu/collections/investigating-civic-ideals-through-art-cultivating-learning/TtWkKlpzFNqM8LrB",
+     "notes": "Smithsonian American Art Museum — what freedom and fairness "
+              "look like when an artist draws them."},
+    {"title": "Smithsonian: We Make History — A Guide for Students",
+     "subject": "History",
+     "url": "https://learninglab.si.edu/collections/we-make-history-a-guide-for-students/OeX0WzB7hkl4Lujp",
+     "notes": "Anacostia Community Museum — a student-facing guide to "
+              "researching and telling history yourself."},
+]
+
 # Sites the curriculum/electives above actually require a login for.
 # required=True -> always needed, regardless of elective picks.
 # required=False -> only needed if one of "electives" is currently selected
@@ -1220,12 +1260,23 @@ QUEST_SUBJECT_COLORS = {
     "Art & Music Appreciation": "#FF5FA2", "Electives": "#4FC3E8",
 }
 
-PLANNED_HOURS = {
-    "Mathematics": 6.0, "Reading": 4.0, "Writing": 2.0, "Science": 4.0,
-    "Social Studies": 2.5, "History": 2.5, "Health": 0.75,
-    "Occupational Education": 0.75, "Art & Music Appreciation": 2.0,
-    "Electives": 2.0,
-}
+def planned_hours_by_subject():
+    """Weekly target hours per subject, derived by adding up WEEKLY_SCHEDULE.
+
+    This used to be a hand-typed dict kept alongside the schedule, which
+    silently drifted out of sync with it (Writing was listed as 2.0 while the
+    schedule only allotted 1.75, so a perfect week still showed as "behind";
+    Mathematics ran the other way at 6.0 vs 6.5). Deriving it means the
+    schedule is the single source of truth and a perfect week always reads as
+    100% — edit WEEKLY_SCHEDULE and these targets follow automatically.
+    """
+    totals = {}
+    for blocks in WEEKLY_SCHEDULE.values():
+        for block in blocks:
+            subject, start, end = block[0], block[1], block[2]
+            totals[subject] = round(totals.get(subject, 0.0)
+                                    + block_hours(start, end), 2)
+    return totals
 
 
 def fmt_date(d):
@@ -1310,7 +1361,7 @@ def get_conn():
     conn.execute("""CREATE TABLE IF NOT EXISTS accounts (
         id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
         service_name TEXT NOT NULL, url TEXT, username TEXT, password TEXT,
-        status TEXT DEFAULT 'not_started', notes TEXT,
+        status TEXT DEFAULT 'not_started', notes TEXT, class_code TEXT,
         FOREIGN KEY (student_id) REFERENCES students (id))""")
     conn.execute("""CREATE TABLE IF NOT EXISTS elective_pool (
         id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE,
@@ -1344,7 +1395,7 @@ def get_conn():
         water INTEGER DEFAULT 0, sleep INTEGER DEFAULT 0,
         nutrition INTEGER DEFAULT 0, journal TEXT,
         day_rating INTEGER, mood_rating INTEGER,
-        lesson_hard INTEGER, lesson_hard_notes TEXT,
+        lesson_score INTEGER, lesson_feedback TEXT,
         UNIQUE(student_id, log_date),
         FOREIGN KEY (student_id) REFERENCES students (id))""")
     conn.execute("""CREATE TABLE IF NOT EXISTS holidays (
@@ -1410,10 +1461,21 @@ def get_conn():
         conn.execute("ALTER TABLE health_habits ADD COLUMN day_rating INTEGER")
     if "mood_rating" not in cols:
         conn.execute("ALTER TABLE health_habits ADD COLUMN mood_rating INTEGER")
-    if "lesson_hard" not in cols:
-        conn.execute("ALTER TABLE health_habits ADD COLUMN lesson_hard INTEGER")
-    if "lesson_hard_notes" not in cols:
-        conn.execute("ALTER TABLE health_habits ADD COLUMN lesson_hard_notes TEXT")
+    # The old Yes/No "was today's lesson hard?" + "what was tough?" pair was
+    # replaced by a 1-5 lesson_score (same scale as day/mood) plus one open
+    # reflection field. Older DBs may still carry the lesson_hard columns;
+    # they're simply left unread rather than dropped, since SQLite's DROP
+    # COLUMN isn't available on every version this runs against.
+    if "lesson_score" not in cols:
+        conn.execute("ALTER TABLE health_habits ADD COLUMN lesson_score INTEGER")
+    if "lesson_feedback" not in cols:
+        conn.execute("ALTER TABLE health_habits ADD COLUMN lesson_feedback TEXT")
+    # migration: class codes (ReadWorks, CommonLit, Kahoot etc. hand these out
+    # when the parent creates a class; the student needs one to join, and it's
+    # easy to lose track of otherwise)
+    cols = table_columns(conn, "accounts")
+    if "class_code" not in cols:
+        conn.execute("ALTER TABLE accounts ADD COLUMN class_code TEXT")
     # migration: older DBs may lack the assignments photo_path/submitted_at columns
     cols = table_columns(conn, "assignments")
     if "photo_path" not in cols:
@@ -1508,6 +1570,20 @@ def get_conn():
             conn.execute(
                 "UPDATE fun_project_pool SET icon = ? WHERE title = ? AND icon = '🗺️'",
                 (proj["icon"], proj["title"]))
+    # Smithsonian collections: seeded exactly once, tracked by a settings flag
+    # rather than by checking titles. Deliberate — a title check would silently
+    # resurrect any collection the parent deleted on the next restart, and
+    # these are suggestions, not fixtures.
+    if not conn.execute("SELECT value FROM settings WHERE key = ?",
+                        ("smithsonian_seeded",)).fetchone():
+        for mat in SMITHSONIAN_LEARNING_LAB_SEEDS:
+            conn.execute("""INSERT INTO curriculum_materials
+                (title, subject, kind, url, notes, created_at)
+                VALUES (?, ?, 'link', ?, ?, ?)""",
+                (mat["title"], mat["subject"], mat["url"], mat["notes"],
+                 datetime.now().isoformat(timespec="seconds")))
+        conn.execute("INSERT INTO settings (key, value) VALUES (?, ?)",
+                     ("smithsonian_seeded", "1"))
     if conn.execute("SELECT COUNT(*) FROM national_parks").fetchone()[0] == 0:
         for name, state, lat, lon, region in DEFAULT_NATIONAL_PARKS:
             conn.execute("""INSERT INTO national_parks (name, state, lat, lon, region)
@@ -2355,17 +2431,17 @@ def get_applicable_account_services(student_id, school_year):
 def get_health_habits_day(student_id, log_date):
     row = conn.execute(
         "SELECT exercise, water, sleep, nutrition, journal, day_rating, "
-        "mood_rating, lesson_hard, lesson_hard_notes FROM health_habits "
+        "mood_rating, lesson_score, lesson_feedback FROM health_habits "
         "WHERE student_id = ? AND log_date = ?",
         (student_id, log_date.isoformat())).fetchone()
     if row is None:
         return {"exercise": 0, "water": 0, "sleep": 0, "nutrition": 0,
                 "journal": "", "day_rating": None, "mood_rating": None,
-                "lesson_hard": None, "lesson_hard_notes": ""}
+                "lesson_score": None, "lesson_feedback": ""}
     return {"exercise": row[0], "water": row[1], "sleep": row[2],
             "nutrition": row[3], "journal": row[4] or "",
             "day_rating": row[5], "mood_rating": row[6],
-            "lesson_hard": row[7], "lesson_hard_notes": row[8] or ""}
+            "lesson_score": row[7], "lesson_feedback": row[8] or ""}
 
 
 def set_health_habit(student_id, log_date, habit_key, value):
@@ -2403,13 +2479,15 @@ def set_health_rating(student_id, log_date, field, value):
     conn.commit()
 
 
-def set_lesson_hard(student_id, log_date, was_hard, notes):
+def set_lesson_reflection(student_id, log_date, score, feedback):
+    """Today's lesson score (1-5, same scale as day/mood) plus one open field
+    for what was hard, unclear, or could be better."""
     conn.execute("""INSERT INTO health_habits (student_id, log_date) VALUES (?, ?)
         ON CONFLICT(student_id, log_date) DO NOTHING""",
         (student_id, log_date.isoformat()))
-    conn.execute("""UPDATE health_habits SET lesson_hard = ?,
-        lesson_hard_notes = ? WHERE student_id = ? AND log_date = ?""",
-        (was_hard, notes, student_id, log_date.isoformat()))
+    conn.execute("""UPDATE health_habits SET lesson_score = ?,
+        lesson_feedback = ? WHERE student_id = ? AND log_date = ?""",
+        (score, feedback, student_id, log_date.isoformat()))
     conn.commit()
 
 
@@ -2441,19 +2519,20 @@ def get_health_streak(student_id):
     return streak
 
 
-def upsert_account(student_id, service_name, url, username, password, status):
+def upsert_account(student_id, service_name, url, username, password, status,
+                    class_code=None):
     existing = conn.execute(
         "SELECT id FROM accounts WHERE student_id = ? AND service_name = ?",
         (student_id, service_name)).fetchone()
     if existing:
         conn.execute("""UPDATE accounts SET url = ?, username = ?, password = ?,
-            status = ? WHERE id = ?""",
-            (url, username, password, status, existing[0]))
+            status = ?, class_code = ? WHERE id = ?""",
+            (url, username, password, status, class_code, existing[0]))
     else:
         conn.execute("""INSERT INTO accounts
-            (student_id, service_name, url, username, password, status)
-            VALUES (?, ?, ?, ?, ?, ?)""",
-            (student_id, service_name, url, username, password, status))
+            (student_id, service_name, url, username, password, status, class_code)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (student_id, service_name, url, username, password, status, class_code))
     conn.commit()
 
 
@@ -3550,7 +3629,7 @@ def render_accounts_checklist(student_id, school_year):
             st.markdown(f"{'✅' if is_created else '⬜'} **[{service}]({info['url']})**")
             st.caption(info["tie"])
             with st.form(key=f"acct_{service}"):
-                c1, c2, c3 = st.columns([2, 2, 1])
+                c1, c2, c3, c4 = st.columns([2, 2, 1.5, 1])
                 with c1:
                     u = st.text_input("Username", key=f"acct_u_{service}",
                                       value=row["username"] if row is not None
@@ -3560,11 +3639,19 @@ def render_accounts_checklist(student_id, school_year):
                                       value=row["password"] if row is not None
                                       and row["password"] else "")
                 with c3:
+                    cc = st.text_input("Class code", key=f"acct_cc_{service}",
+                                       value=row["class_code"] if row is not None
+                                       and row["class_code"] else "",
+                                       help="If this site makes you create a "
+                                            "class and join it with a code, "
+                                            "keep the code here.")
+                with c4:
                     created = st.checkbox("Created", value=is_created,
                                           key=f"acct_c_{service}")
                 if st.form_submit_button("Save"):
                     upsert_account(student_id, service, info["url"], u, p,
-                                   "created" if created else "not_started")
+                                   "created" if created else "not_started",
+                                   cc.strip() or None)
                     st.rerun()
         return is_created
 
@@ -3596,10 +3683,12 @@ def render_accounts_checklist(student_id, school_year):
         with c2:
             cs_user = st.text_input("Username", key="acct_custom_user")
             cs_pw = st.text_input("Password", key="acct_custom_pw")
+        cs_cc = st.text_input("Class code (optional)", key="acct_custom_cc")
         if st.form_submit_button("Add"):
             if cs_name.strip():
                 upsert_account(student_id, cs_name.strip(), cs_url.strip(),
-                               cs_user, cs_pw, "created")
+                               cs_user, cs_pw, "created",
+                               cs_cc.strip() or None)
                 st.success("Added.")
                 st.rerun()
             else:
@@ -3613,8 +3702,11 @@ def render_accounts_checklist(student_id, school_year):
             with st.container(border=True):
                 cc1, cc2 = st.columns([5, 1])
                 with cc1:
+                    code_bit = (f" · Class code: `{r['class_code']}`"
+                                if r["class_code"] else "")
                     st.markdown(f"**{r['service_name']}** — {r['url']}  \n"
-                                f"Username: `{r['username']}` · Password: `{r['password']}`")
+                                f"Username: `{r['username']}` · "
+                                f"Password: `{r['password']}`{code_bit}")
                 with cc2:
                     if st.button("Remove", key=f"acct_del_{r['id']}"):
                         delete_account(int(r["id"]))
@@ -3666,11 +3758,16 @@ def render_accounts_table(student_id):
     if accts.empty:
         st.info("No logins saved yet — ask a parent to set them up in Parent mode.")
     else:
-        show = accts[["service_name", "url", "username", "password"]].rename(columns={
+        show = accts[["service_name", "url", "username", "password",
+                      "class_code"]].rename(columns={
             "service_name": "Service", "url": "URL", "username": "Username",
-            "password": "Password"})
+            "password": "Password", "class_code": "Class code"})
+        show["Class code"] = show["Class code"].fillna("")
         st.dataframe(show, use_container_width=True, hide_index=True,
                     column_config={"URL": st.column_config.LinkColumn("URL")})
+        if show["Class code"].str.strip().ne("").any():
+            st.caption("Class code is what you enter on the site to join the "
+                       "class your parent set up.")
 
     st.divider()
     st.subheader("🔗 Report a broken link")
@@ -3699,7 +3796,7 @@ def render_accounts_table(student_id):
                 st.caption(f"Parent note: {r['parent_note']}")
 
 
-def _week_habit_grid(student_id, today, editable_today=False):
+def _week_habit_grid(student_id, today):
     """Renders a Mon-Sun row of habit-completion icons for the current week."""
     week_start = today - timedelta(days=today.weekday())
     week_df = get_health_habits_range(student_id, week_start,
@@ -3726,13 +3823,19 @@ def _week_habit_grid(student_id, today, editable_today=False):
 
 
 def render_health_habits_checkin(student_id):
-    """Student-only: daily wellness check-in card, shown on the Today tab."""
+    """Student-only: daily wellness check-in card, shown on the Today tab.
+    Returns True once the check-in counts as complete (all four habits ticked
+    and all three ratings given) so Today can treat it as a checklist item."""
+    today = date.today()
+    today_habits = get_health_habits_day(student_id, today)
+    is_complete = (all(today_habits[h["key"]] for h in HEALTH_HABITS)
+                   and today_habits["day_rating"] is not None
+                   and today_habits["mood_rating"] is not None
+                   and today_habits["lesson_score"] is not None)
     with st.container(border=True):
-        st.markdown("**💪 Health Check-in**")
+        st.markdown(f"{'✅' if is_complete else '⬜'} **💪 Health Check-in**")
         st.caption("A quick daily wellness check — separate from your Health "
                    "coursework hours.")
-        today = date.today()
-        today_habits = get_health_habits_day(student_id, today)
         cols = st.columns(len(HEALTH_HABITS))
         for i, h in enumerate(HEALTH_HABITS):
             with cols[i]:
@@ -3747,7 +3850,7 @@ def render_health_habits_checkin(student_id):
         if streak > 0:
             st.success(f"🔥 {streak}-day streak — all 4 checked!")
 
-        rc1, rc2 = st.columns(2)
+        rc1, rc2, rc3 = st.columns(3)
         with rc1:
             st.caption("How was your day?")
             day_pick = st.radio(
@@ -3772,22 +3875,26 @@ def render_health_habits_checkin(student_id):
                 new_val = RATING_SCALE.index(mood_pick) + 1
                 if new_val != today_habits["mood_rating"]:
                     set_health_rating(student_id, today, "mood_rating", new_val)
+        with rc3:
+            st.caption("How'd today's lesson go?")
+            lesson_pick = st.radio(
+                "Lesson score", RATING_SCALE, horizontal=True,
+                index=(today_habits["lesson_score"] - 1)
+                if today_habits["lesson_score"] else None,
+                key=f"health_lesson_score_{today.isoformat()}",
+                label_visibility="collapsed")
 
-        st.caption("Was today's lesson hard?")
-        hard_opts = ["Yes", "No"]
-        hard_index = ({1: 0, 0: 1}.get(today_habits["lesson_hard"])
-                      if today_habits["lesson_hard"] is not None else None)
-        hard_pick = st.radio("Lesson hard?", hard_opts, horizontal=True,
-                             index=hard_index, key=f"health_lesson_hard_{today.isoformat()}",
-                             label_visibility="collapsed")
-        hard_notes = st.text_input(
-            "What was tough? (optional)", value=today_habits["lesson_hard_notes"],
-            key=f"health_lesson_hard_notes_{today.isoformat()}",
-            placeholder="Optional — what made it hard?")
-        new_hard = {"Yes": 1, "No": 0}.get(hard_pick)
-        if (new_hard != today_habits["lesson_hard"]
-                or hard_notes != today_habits["lesson_hard_notes"]):
-            set_lesson_hard(student_id, today, new_hard, hard_notes.strip())
+        new_score = (RATING_SCALE.index(lesson_pick) + 1
+                     if lesson_pick is not None else None)
+        lesson_feedback = st.text_input(
+            "Anything hard, unclear, or that could be better?",
+            value=today_habits["lesson_feedback"],
+            key=f"health_lesson_feedback_{today.isoformat()}",
+            placeholder="Optional — what tripped you up, or what would help?")
+        if (new_score != today_habits["lesson_score"]
+                or lesson_feedback != today_habits["lesson_feedback"]):
+            set_lesson_reflection(student_id, today, new_score,
+                                  lesson_feedback.strip())
 
         st.caption("Journal (optional — just thoughts, no structure needed):")
         journal_text = st.text_area(
@@ -3798,37 +3905,53 @@ def render_health_habits_checkin(student_id):
             set_health_journal(student_id, today, journal_text)
 
         st.caption("This week:")
-        _week_habit_grid(student_id, today, editable_today=True)
+        _week_habit_grid(student_id, today)
+    return is_complete
 
 
 def render_health_habits_summary(student_id):
     """Parent-only: read-only weekly view + streak + journal/rating entries."""
     st.subheader("💪 Health Habits")
     st.caption("Daily wellness check-ins he logs himself — exercise, water, "
-               "sleep, nutrition, day/mood ratings, and an optional journal. "
-               "Separate from Health coursework hours.")
+               "sleep, nutrition, day/mood/lesson ratings, what was hard or "
+               "unclear, and an optional journal. Separate from Health "
+               "coursework hours.")
+    week_df = get_health_habits_range(student_id, date.today() - timedelta(days=6),
+                                      date.today())
     streak = get_health_streak(student_id)
-    st.metric("Current streak", f"{streak} day{'s' if streak != 1 else ''}")
+    m1, m2 = st.columns(2)
+    m1.metric("Current streak", f"{streak} day{'s' if streak != 1 else ''}")
+    # Lesson score is the one rating that says "is the teaching landing?", so
+    # surface the 7-day average rather than making it hunt-through-the-list.
+    scores = week_df["lesson_score"].dropna() if not week_df.empty else pd.Series(dtype=float)
+    if not scores.empty:
+        avg = scores.mean()
+        m2.metric("Lesson score (7-day avg)",
+                  f"{RATING_SCALE[min(int(round(avg)) - 1, 4)]} {avg:.1f}/5",
+                  help="Average of his daily \"How'd today's lesson go?\" rating.")
+    else:
+        m2.metric("Lesson score (7-day avg)", "—")
     st.caption("This week:")
     _week_habit_grid(student_id, date.today())
 
-    week_df = get_health_habits_range(student_id, date.today() - timedelta(days=6),
-                                      date.today())
     has_content = (week_df["journal"].fillna("").str.strip().ne("")
                   | week_df["day_rating"].notna()
                   | week_df["mood_rating"].notna()
-                  | week_df["lesson_hard"].notna()) if not week_df.empty else pd.Series(dtype=bool)
+                  | week_df["lesson_score"].notna()
+                  | week_df["lesson_feedback"].fillna("").str.strip().ne("")
+                  ) if not week_df.empty else pd.Series(dtype=bool)
     entries = week_df[has_content] if not week_df.empty else week_df
     if not entries.empty:
         with st.expander("This week's check-ins"):
             for _, r in entries.sort_values("log_date", ascending=False).iterrows():
                 day_e = RATING_SCALE[int(r["day_rating"]) - 1] if pd.notna(r["day_rating"]) else "—"
                 mood_e = RATING_SCALE[int(r["mood_rating"]) - 1] if pd.notna(r["mood_rating"]) else "—"
-                st.markdown(f"**{fmt_date(r['log_date'])}** · Day: {day_e} · Mood: {mood_e}")
-                if pd.notna(r["lesson_hard"]):
-                    st.caption(f"Lesson hard? {'Yes' if r['lesson_hard'] else 'No'}"
-                              + (f" — {r['lesson_hard_notes']}"
-                                 if r["lesson_hard_notes"] else ""))
+                lesson_e = (RATING_SCALE[int(r["lesson_score"]) - 1]
+                            if pd.notna(r["lesson_score"]) else "—")
+                st.markdown(f"**{fmt_date(r['log_date'])}** · Day: {day_e} · "
+                            f"Mood: {mood_e} · Lesson: {lesson_e}")
+                if r["lesson_feedback"] and str(r["lesson_feedback"]).strip():
+                    st.caption(f"🧩 Hard/unclear: {r['lesson_feedback']}")
                 if r["journal"] and r["journal"].strip():
                     st.caption(r["journal"])
     else:
@@ -4228,17 +4351,20 @@ if not parent_mode:
         date(2027, 4, 15): "📌 Annual assessment (target window)",
     }
 
-    def render_day_blocks(d, allow_marking, key_prefix):
+    def render_day_blocks(d, allow_marking, key_prefix, show_progress=True):
+        """Renders one day's schedule blocks. Returns (done, total) so callers
+        can roll these into a bigger checklist instead of showing the
+        per-block bar — Today does that, Calendar keeps its own."""
         school_year = student_row["school_year"] or "current"
         holiday_label = get_holiday_for_date(school_year, d)
         if holiday_label:
             st.success(f"🎉 No school today — {holiday_label}")
-            return
+            return 0, 0
         day_name = d.strftime("%A")
         blocks = WEEKLY_SCHEDULE.get(day_name)
         if not blocks:
             st.info("No school scheduled on this day. 🎉")
-            return
+            return 0, 0
         chosen_electives = get_student_electives(student_id, school_year)
         elective_pool = get_elective_pool_dict()
         books = get_student_books(student_id, school_year)
@@ -4265,8 +4391,9 @@ if not parent_mode:
                     if entry is not None and entry.get("struggled"):
                         badge += " · 😕 Marked as struggled"
                     chip_color = QUEST_SUBJECT_COLORS.get(subject, "#FFD23F")
+                    tick = "✅" if status else "⬜"
                     st.markdown(
-                        f'<span style="background:{chip_color};border:2px solid #1A1610;'
+                        f'{tick} <span style="background:{chip_color};border:2px solid #1A1610;'
                         f'border-radius:6px;padding:2px 10px;font-weight:800;font-size:14.5px;'
                         f'display:inline-block">{QUEST_TITLES.get(subject, subject)}</span> {badge}',
                         unsafe_allow_html=True)
@@ -4311,8 +4438,10 @@ if not parent_mode:
                                       f"Completed via {done_label}", "Instruction", "pending",
                                       struggled=True, block_start=start)
                             st.rerun()
-        st.progress(done_ct / len(blocks),
-                    text=f"{done_ct} / {len(blocks)} blocks logged")
+        if show_progress:
+            st.progress(done_ct / len(blocks),
+                        text=f"{done_ct} / {len(blocks)} blocks logged")
+        return done_ct, len(blocks)
 
     if st.session_state.student_view == "Day 1 Checklist":
         school_year = student_row["school_year"] or "current"
@@ -4322,6 +4451,11 @@ if not parent_mode:
         d = date.today()
         st.subheader(f"{d.strftime('%A')}, {d.strftime('%B %d')}")
         today_school_year = student_row["school_year"] or "current"
+
+        # The checklist header sits at the top but can't be drawn until the
+        # blocks and check-in below report how many are done — so reserve the
+        # slot now and fill it at the end of the run.
+        checklist_slot = st.container()
 
         active_quest = get_active_fun_project(student_id, today_school_year)
         if active_quest is not None:
@@ -4349,7 +4483,8 @@ if not parent_mode:
 
         if d in KEY_DATES:
             st.warning(KEY_DATES[d])
-        render_day_blocks(d, allow_marking=True, key_prefix="today")
+        blocks_done, blocks_total = render_day_blocks(
+            d, allow_marking=True, key_prefix="today", show_progress=False)
 
         qsubj, qtopic = suggest_quiz_for_day(student_id, d)
         if qsubj:
@@ -4368,7 +4503,40 @@ if not parent_mode:
                     f"{days_left_in_month} day(s) left. Check out the "
                     "🗺️ Quest Board tab!")
 
-        render_health_habits_checkin(student_id)
+        checkin_done = render_health_habits_checkin(student_id)
+
+        # --- fill in the checklist header reserved at the top of the view
+        todo_done = blocks_done + int(checkin_done)
+        todo_total = blocks_total + 1  # the blocks, plus the health check-in
+        with checklist_slot:
+            if blocks_total == 0:
+                # holiday/weekend — render_day_blocks already said so
+                pass
+            else:
+                left = todo_total - todo_done
+                if todo_done == 0:
+                    hype = "Let's get after it 💪"
+                elif left == 0:
+                    hype = "Everything's done — go enjoy your day! 🎉"
+                elif left == 1:
+                    hype = "One left. So close! 🔥"
+                elif todo_done >= todo_total / 2:
+                    hype = "Over halfway — keep rolling 🚀"
+                else:
+                    hype = "Nice start — keep going ⭐"
+                st.markdown(f"### ✅ Today's checklist — {todo_done}/{todo_total}")
+                st.progress(todo_done / todo_total, text=hype)
+                if left == 0:
+                    st.success("🏆 Full sweep! Every block logged and your "
+                               "check-in is in. That's a complete day.")
+                    # only pop the confetti the first time it hits 100% today
+                    party_key = f"party_{d.isoformat()}"
+                    if not st.session_state.get(party_key):
+                        st.session_state[party_key] = True
+                        st.balloons()
+                st.caption("Your to-dos: each subject block below, plus your "
+                           "health check-in at the bottom.")
+                st.divider()
 
     elif st.session_state.student_view == "Calendar":
         if "cal_month" not in st.session_state:
@@ -4845,11 +5013,13 @@ else:
             wk = approved[(approved["d"] >= monday) & (approved["d"] <= friday)]
             actual = wk.groupby("subject")["hours"].sum()
             rows = []
-            for s, p in PLANNED_HOURS.items():
+            for s, p in planned_hours_by_subject().items():
                 a = float(actual.get(s, 0.0))
                 stat = "✅" if a >= p else ("⬜" if a == 0 else "🟡")
                 rows.append({"Subject": s, "Planned": p, "Actual": round(a, 2), "": stat})
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            st.caption("Planned is calculated from the weekly schedule, so a "
+                       "week with every block done reads as 100%.")
 
             st.subheader("Hours by subject (year)")
             st.bar_chart(approved.groupby("subject")["hours"].sum().sort_values(ascending=False))
