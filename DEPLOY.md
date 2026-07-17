@@ -44,9 +44,47 @@ docker run -p 8501:8501 -e PARENT_PASSCODE=test compass
 # SQLite file (ephemeral), which is fine for a build check.
 ```
 
+## Two households (prod testing) — one instance per family
+
+Compass is single-tenant, so **each household gets its own instance with its
+own database**. This is the recommended path for the current "my house + one
+other house" testing: data isolation is physical (separate Postgres per
+family — House B literally cannot see House A's kid), and it needs zero new
+code. Graduate to real multi-tenant signup later, when there are more families
+than instances are worth managing.
+
+Do the Render steps above **once per household**, changing three things each
+time so the two don't collide:
+
+| | House A | House B |
+|---|---|---|
+| Web service `name` | `compass-a` | `compass-b` |
+| Database `name` | `compass-a-db` | `compass-b-db` |
+| `PARENT_PASSCODE` | A's code | B's code |
+
+Two ways to create the second one:
+- **Simplest:** in Render, **New + → Web Service → Docker**, point at the same
+  GitHub repo, add a Postgres from **New + → Postgres**, and set that service's
+  `DATABASE_URL` + `PARENT_PASSCODE` by hand. (Blueprints key on the names in
+  `render.yaml`, so a second blueprint from the same file would clash — the
+  manual route avoids that.)
+- Or keep a copy of `render.yaml` per household with the names above and deploy
+  each as its own blueprint.
+
+Each family then self-serves inside their own instance:
+1. Parent opens the URL, unlocks with the passcode you set, and adds their
+   student(s) — **setting each kid's grade (8th/9th) in the add form or in
+   Settings**.
+2. The parent hands their kid the **student link**: `https://<their-url>/?view=student`.
+3. The parent can change their own passcode any time in **Parent → Settings**
+   (that overrides the deploy-time `PARENT_PASSCODE`).
+
+**What to give the other household:** just their URL, their parent passcode,
+and the `/?view=student` link for the kid. Nothing else.
+
 ## Notes / next step
 
-Single-tenant for now: one hosted instance = one family's data. Real
-per-family accounts (signup, login, data isolation) and billing are the next
-build, per the plan's deferred list. The `PARENT_PASSCODE` gate is the
-stand-in until then — do not treat it as real multi-user auth.
+The `PARENT_PASSCODE` gate is a household unlock, **not** real multi-user auth —
+don't treat it as such, and don't put more than one family on a single
+instance. Real per-family accounts (signup, login, row-level isolation) and
+billing are the next build when the instance-per-family model stops scaling.
