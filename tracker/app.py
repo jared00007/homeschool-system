@@ -1661,6 +1661,67 @@ def get_assessment_reminder(student_id, school_year):
     return None
 
 
+# WA RCW 28A.200.010 requires the Declaration of Intent to be filed by
+# Sept 15 (or within 2 weeks of the term start) EVERY school year — so
+# the dismiss flag is keyed per school_year, not a one-time-ever flag.
+DOI_QUALIFICATION_OPTIONS = [
+    "Supervised by a certificated person for at least 45 school days "
+    "pursuant to a home-based instruction program.",
+    "Completed a course in home-based instruction at a post-secondary "
+    "institution or vocational-technical school.",
+    "Advised by a school psychologist regarding home-based study prior "
+    "to starting the program.",
+    "Hold a bachelor's degree.",
+    "Deemed qualified by the superintendent of the district.",
+    "Instructed within a public or private school for at least the "
+    "equivalent of two full school years within the last four years.",
+]
+
+
+def doi_letter_template(student_name, school_year):
+    options = "\n".join(f"- ( ) {opt}" for opt in DOI_QUALIFICATION_OPTIONS)
+    return f"""Subject: Declaration of Intent to Provide Home-Based Instruction — {student_name or "[Student's Full Name]"}
+
+To the [District Name] School District,
+
+This letter serves as my Declaration of Intent to provide home-based instruction to my child for the {school_year} school year, pursuant to RCW 28A.200.010.
+
+Student: {student_name or "[Student's full legal name]"}
+Date of birth: [MM/DD/YYYY]
+Address: [home address]
+Grade level: [grade]
+Parent/guardian: [your full name]
+
+I meet the qualification requirements of RCW 28A.200.010(4) under the following provision (keep one):
+
+{options}
+
+Please confirm receipt of this declaration at your convenience.
+
+Sincerely,
+[Your name]
+[Phone / email]"""
+
+
+def get_doi_reminder(school_year):
+    """(level, days_left, deadline) for the WA Declaration of Intent
+    deadline, or None if already dismissed for this school year."""
+    if setting_get(f"doi_dismissed_{school_year}") == "1":
+        return None
+    today = date.today()
+    deadline = date(today.year, 9, 15)
+    if today > deadline:
+        deadline = date(today.year + 1, 9, 15)
+    days_left = (deadline - today).days
+    if days_left <= 0:
+        level = "error"
+    elif days_left <= 14:
+        level = "warning"
+    else:
+        level = "info"
+    return (level, days_left, deadline)
+
+
 def get_parent_checkins(student_id):
     return pd.read_sql("SELECT * FROM parent_checkins WHERE student_id = ? "
                        "ORDER BY checkin_date DESC", conn, params=[student_id])
@@ -4543,6 +4604,30 @@ else:
     if reminder:
         level, msg = reminder
         {"error": st.error, "warning": st.warning, "info": st.info}[level](msg)
+
+    doi_school_year = student_row["school_year"] or "current"
+    doi = get_doi_reminder(doi_school_year)
+    if doi:
+        doi_level, doi_days_left, doi_deadline = doi
+        doi_msg = (f"⚠️ **Declaration of Intent overdue** — the {fmt_date(doi_deadline)} "
+                   "deadline has passed." if doi_days_left <= 0 else
+                   f"📌 **Declaration of Intent due in {doi_days_left} day"
+                   f"{'s' if doi_days_left != 1 else ''}** — filed with your school "
+                   f"district by {fmt_date(doi_deadline)} (WA RCW 28A.200.010).")
+        {"error": st.error, "warning": st.warning, "info": st.info}[doi_level](doi_msg)
+        with st.expander("📋 Steps & letter template"):
+            st.markdown(
+                "1. Check your district's site first — many post their own form.\n"
+                "2. No district form? The letter below satisfies the legal requirement.\n"
+                "3. Email is fine for most WA districts — confirm with yours.\n"
+                "4. Keep a copy/confirmation in your records.\n"
+                "5. This is filed every school year, not once.")
+            st.text_area("Letter template — copy and fill in the brackets",
+                         value=doi_letter_template(student_row["name"], doi_school_year),
+                         height=320, key="doi_letter_text")
+            if st.button("✅ Filed — dismiss this reminder", key="doi_dismiss"):
+                setting_set(f"doi_dismissed_{doi_school_year}", "1")
+                st.rerun()
 
     (t_checklist, t_review, t_log, t_grading, t_dash, t_cov, t_scope, t_fun,
      t_parks, t_accounts, t_assess, t_export, t_settings, t_resources) = st.tabs(
