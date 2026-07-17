@@ -1520,6 +1520,18 @@ DAILY_MOVES = [
     "👀 Look out a window at something far away for 60 seconds — eye break",
 ]
 
+# Interest chips for the Passion Track intake — tappable, so a 13-year-old
+# actually fills it in. Stored as a comma list on passion_profile.interests
+# and used by the weekly blender to rank which quests to surface first.
+INTEREST_OPTIONS = [
+    "🎨 Art & drawing", "📚 Comics & manga", "🎬 Video & YouTube",
+    "🧱 Building & Legos", "🎮 Video games", "🎵 Music", "🐾 Animals",
+    "🚀 Space", "📜 History", "⚽ Sports", "💻 Coding", "🍳 Cooking",
+    "🌲 Nature & outdoors", "🚗 Cars & machines", "📖 Reading & stories",
+    "🔬 Science experiments", "🗺️ Travel & maps", "🎲 Board games & D&D",
+    "🎭 Acting & film", "🤖 Robots & tech",
+]
+
 
 # ------------------------------------------------------------- database
 def get_conn():
@@ -1862,6 +1874,25 @@ def setting_get(key):
 def setting_set(key, value):
     conn.execute("INSERT INTO settings (key, value) VALUES (?, ?) "
                  "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+    conn.commit()
+
+
+def get_passion_profile(student_id):
+    row = conn.execute("SELECT interests, core_values FROM passion_profile "
+                       "WHERE student_id = ?", (student_id,)).fetchone()
+    if not row:
+        return {"interests": [], "core_values": ""}
+    return {"interests": [t for t in (row[0] or "").split(",") if t],
+            "core_values": row[1] or ""}
+
+
+def set_passion_profile(student_id, interests, core_values):
+    conn.execute("""INSERT INTO passion_profile
+        (student_id, interests, core_values, updated_at) VALUES (?, ?, ?, ?)
+        ON CONFLICT(student_id) DO UPDATE SET interests = excluded.interests,
+        core_values = excluded.core_values, updated_at = excluded.updated_at""",
+        (student_id, ",".join(interests), core_values,
+         datetime.now().isoformat(timespec="seconds")))
     conn.commit()
 
 
@@ -3339,13 +3370,39 @@ def render_scope_reference():
             st.markdown(desc)
 
 
+def render_passion_intake(student_id, key_prefix):
+    """The interest/values intake — a tappable 'passion profile' that the
+    weekly blender uses to rank which quests to surface. Kept to chips + one
+    short goal so a 13-year-old actually completes it."""
+    prof = get_passion_profile(student_id)
+    has_profile = bool(prof["interests"])
+    with st.expander("✨ What are you into? (helps pick your quests)",
+                     expanded=not has_profile):
+        st.caption("Tap everything that sounds like you. Change it whenever.")
+        interests = st.pills("Interests", INTEREST_OPTIONS, selection_mode="multi",
+                            default=prof["interests"],
+                            key=f"{key_prefix}_interests",
+                            label_visibility="collapsed")
+        interests = interests or []
+        goal = st.text_input(
+            "One thing you'd love to get good at this year",
+            value=prof["core_values"], key=f"{key_prefix}_goal",
+            placeholder="e.g. draw my own comic, edit videos, cook dinner")
+        if interests != prof["interests"] or goal != prof["core_values"]:
+            set_passion_profile(student_id, interests, goal.strip())
+            st.rerun()
+        if has_profile:
+            st.success("Locked in — your quests lean toward this now.")
+
+
 def render_fun_projects_picker(student_id, school_year, key_prefix):
     """Browse and pick major quests for the year; track status. Used by both views."""
-    st.subheader("🗺️ Quest Board — Major Quests for the Year")
-    st.caption("A backlog of bigger real-world projects for the school year — "
-               "pick what sounds interesting, not all of them need to get done. "
-               "Finishing one sends the hours to a parent for approval automatically.")
+    st.subheader("🗺️ Passion Track — Quests Built Around You")
+    st.caption("Bigger real-world projects that follow what you're into — pick "
+               "what sounds fun, not all of them need doing. Finishing one sends "
+               "the hours to a parent for approval automatically.")
     st.markdown(QUEST_CARD_CSS, unsafe_allow_html=True)
+    render_passion_intake(student_id, key_prefix)
 
     mine = get_student_fun_projects(student_id, school_year)
     my_titles = list(mine["title"]) if not mine.empty else []
@@ -4939,7 +4996,7 @@ with st.sidebar:
             st.session_state.student_view = "Today"
 
         _nav_group("📅 Schedule & Quests", [
-            ("Today", "📅"), ("My Week", "🗓"), ("Calendar", "📆"), ("Quest Board", "🗺️")],
+            ("Today", "📅"), ("My Week", "🗓"), ("Calendar", "📆"), ("Passion Track", "🗺️")],
             "nav_schedule", "student_view")
         _nav_group("🎯 Learning", [
             ("Foundations", "🧭"), ("Electives & Books", "🎯"), ("Quizzes", "📝"),
@@ -4963,7 +5020,7 @@ with st.sidebar:
             ("Dashboard", "📊"), ("Curriculum", "📚"), ("8th Grade Scope", "📋")],
             "pnav_progress", "parent_view")
         _nav_group("🎯 Content", [
-            ("Quest Board", "🗺️"), ("Foundations", "🧭"), ("Travel Log", "🧳")],
+            ("Passion Track", "🗺️"), ("Foundations", "🧭"), ("Travel Log", "🧳")],
             "pnav_content", "parent_view")
         _nav_group("🗄️ Records", [
             ("Accounts", "🔑"), ("Assessments", "✅"), ("Export", "⬇️")],
@@ -5300,7 +5357,7 @@ if not parent_mode:
         if finished_this_month == 0 and days_left_in_month <= 7:
             st.info(f"🌟 No quest finished yet this month — "
                     f"{days_left_in_month} day(s) left. Check out the "
-                    "🗺️ Quest Board tab!")
+                    "🗺️ Passion Track tab!")
 
         checkin_done = render_health_habits_checkin(student_id)
 
@@ -5435,7 +5492,7 @@ if not parent_mode:
             st.caption(f"🌟 {month_fun_ct} quest(s) finished this month.")
         elif month.year == today.year and month.month == today.month:
             st.caption("🌟 No quest finished yet this month — check the "
-                      "🗺️ Quest Board tab.")
+                      "🗺️ Passion Track tab.")
 
         if not holidays_df.empty:
             month_holidays = holidays_df[
@@ -5493,7 +5550,7 @@ if not parent_mode:
     elif st.session_state.student_view == "8th Grade Scope":
         render_scope_reference()
 
-    elif st.session_state.student_view == "Quest Board":
+    elif st.session_state.student_view == "Passion Track":
         school_year = student_row["school_year"] or "current"
         render_fun_projects_picker(student_id, school_year, key_prefix="stu")
 
@@ -5863,7 +5920,7 @@ else:
         render_scope_reference()
 
     # ---- Quest Board
-    elif parent_view == "Quest Board":
+    elif parent_view == "Passion Track":
         school_year = student_row["school_year"] or "current"
         render_fun_projects_picker(student_id, school_year, key_prefix="parent")
         st.divider()
