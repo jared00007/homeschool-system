@@ -339,42 +339,102 @@ DEFAULT_BOOK_POOL = [
      "link": "https://www.goodreads.com/book/show/18263725-the-crossover"},
 ]
 
-SCOPE_FRAMING_NOTE = (
-    "As a WA DOI homeschooler, there are no state-mandated grade-level "
-    "standards — the 11 subject areas must be covered, but you decide depth "
-    "and pace. What follows is the typical 8th-grade scope (roughly aligned "
-    "to what public schools target), worth loosely tracking since it keeps "
-    "him on-ramp-ready for 9th grade and Running Start later."
-)
-
-# Typical 8th-grade scope by subject — reference only, not tracked/graded.
-SCOPE_BY_SUBJECT = {
-    "Mathematics": (
-        "Pre-algebra completing into Algebra 1 readiness: linear equations "
-        "and functions, systems of equations, exponents and scientific "
-        "notation, Pythagorean theorem, volume, intro statistics (scatter "
-        "plots, two-way tables). If he's strong, many homeschoolers just do "
-        "Algebra 1 in 8th — a full year ahead, sets up calculus by senior year."),
-    "Reading / Writing (ELA)": (
-        "Analyzing literature (theme, character arcs, author's purpose), "
-        "argumentative and explanatory essay writing with evidence, research "
-        "skills with citations, grammar refinement, vocabulary in context. "
-        "Reading list typically mixes classic novels and nonfiction."),
-    "Science": (
-        "Usually a physical science year: motion and forces, energy, waves, "
-        "atoms and the periodic table, chemical reactions — plus some "
-        "earth/space (plate tectonics, astronomy)."),
-    "Social Studies / History": (
-        "Most commonly U.S. history (colonial era through Reconstruction or "
-        "Civil War) plus civics: Constitution, branches of government, how "
-        "laws work. Washington also expects Pacific Northwest history "
-        "somewhere in middle school — worth folding in."),
-    "Health": (
-        "Nutrition, body systems, mental health basics, first aid, "
-        "decision-making around substances."),
-    "Occ. Ed / Art & Music / Electives": (
-        "Wide open at this age — follow his interest."),
+# Typical grade scopes — reference only, not tracked/graded. Keyed by grade so
+# a parent can set a student to 8th or 9th and the scope reference follows. The
+# WA DOI framing (parent decides depth/pace) holds for both.
+GRADE_SCOPES = {
+    "8th": {
+        "framing": (
+            "As a WA DOI homeschooler, there are no state-mandated grade-level "
+            "standards — the 11 subject areas must be covered, but you decide "
+            "depth and pace. What follows is the typical 8th-grade scope "
+            "(roughly aligned to what public schools target), worth loosely "
+            "tracking since it keeps him on-ramp-ready for 9th grade and "
+            "Running Start later."),
+        "subjects": {
+            "Mathematics": (
+                "Pre-algebra completing into Algebra 1 readiness: linear "
+                "equations and functions, systems of equations, exponents and "
+                "scientific notation, Pythagorean theorem, volume, intro "
+                "statistics (scatter plots, two-way tables). If he's strong, "
+                "many homeschoolers just do Algebra 1 in 8th — a full year "
+                "ahead, sets up calculus by senior year."),
+            "Reading / Writing (ELA)": (
+                "Analyzing literature (theme, character arcs, author's "
+                "purpose), argumentative and explanatory essay writing with "
+                "evidence, research skills with citations, grammar refinement, "
+                "vocabulary in context. Reading list typically mixes classic "
+                "novels and nonfiction."),
+            "Science": (
+                "Usually a physical science year: motion and forces, energy, "
+                "waves, atoms and the periodic table, chemical reactions — "
+                "plus some earth/space (plate tectonics, astronomy)."),
+            "Social Studies / History": (
+                "Most commonly U.S. history (colonial era through "
+                "Reconstruction or Civil War) plus civics: Constitution, "
+                "branches of government, how laws work. Washington also "
+                "expects Pacific Northwest history somewhere in middle "
+                "school — worth folding in."),
+            "Health": (
+                "Nutrition, body systems, mental health basics, first aid, "
+                "decision-making around substances."),
+            "Occ. Ed / Art & Music / Electives": (
+                "Wide open at this age — follow his interest."),
+        },
+    },
+    "9th": {
+        "framing": (
+            "9th grade is the start of high school — the big shift is that "
+            "courses now count as high-school credits on a transcript. Same "
+            "WA DOI freedom (you decide depth and pace, no state grade "
+            "standards), but this is the year to start keeping a simple "
+            "transcript: course name, and a grade or credit earned. What "
+            "follows is the typical 9th-grade scope; a full year of a subject "
+            "is usually 1 credit, a semester 0.5."),
+        "subjects": {
+            "Mathematics": (
+                "Algebra 1 in full — linear and quadratic functions, systems, "
+                "polynomials, factoring, exponents — or Geometry if Algebra 1 "
+                "was already done in 8th (proofs, congruence and similarity, "
+                "right-triangle trig, area and volume). First year of the "
+                "high-school math sequence."),
+            "Reading / Writing (ELA)": (
+                "9th-grade literature: close reading of novels, short "
+                "stories, and usually a Shakespeare play; literary analysis "
+                "plus argumentative and research essays with MLA citations; "
+                "rhetoric and vocabulary. The writing load steps up noticeably "
+                "from middle school."),
+            "Science": (
+                "Most commonly Biology — cells, DNA and genetics, evolution, "
+                "ecology, and human body systems, with real lab work. Some "
+                "homeschoolers do Physical Science or a physics-first "
+                "sequence instead."),
+            "Social Studies / History": (
+                "Commonly World History (ancient civilizations through the "
+                "modern era) or Human Geography; some do U.S. Government / "
+                "Civics. Fold in WA Pacific Northwest history if it wasn't "
+                "covered earlier."),
+            "Health / PE": (
+                "Personal health and fitness, nutrition, first aid / CPR "
+                "basics, mental health, and decisions around substances — "
+                "often tracked as a half-credit each of Health and PE."),
+            "World Language / Art / Electives / CTE": (
+                "9th is when a world language for credit usually starts, "
+                "alongside arts and career-technical work (coding, design). "
+                "These now earn transcript credit — worth choosing with the "
+                "transcript in mind."),
+        },
+    },
 }
+
+
+def scope_for_grade(grade):
+    """Returns (scope_dict, label) for a student's grade. Tolerant of free-text
+    grade values ('8th', '9', 'Grade 9', ...); defaults to 8th."""
+    g = str(grade or "").lower()
+    if "9" in g:
+        return GRADE_SCOPES["9th"], "9th"
+    return GRADE_SCOPES["8th"], "8th"
 
 # Seed data only — the live, editable pool lives in the fun_project_pool DB
 # table (parents manage it from the 🗺️ Quest Board tab).
@@ -3552,11 +3612,13 @@ def render_book_pool_admin():
         key_prefix="bookpool")
 
 
-def render_scope_reference():
-    """Read-only 8th grade scope reference — shown in both Student and Parent views."""
-    st.subheader("Typical 8th Grade Scope")
-    st.info(SCOPE_FRAMING_NOTE)
-    for subject, desc in SCOPE_BY_SUBJECT.items():
+def render_scope_reference(grade="8th"):
+    """Read-only grade scope reference — shown in both Student and Parent
+    views, keyed to the student's grade (8th or 9th)."""
+    scope, label = scope_for_grade(grade)
+    st.subheader(f"Typical {label} Grade Scope")
+    st.info(scope["framing"])
+    for subject, desc in scope["subjects"].items():
         with st.expander(subject):
             st.markdown(desc)
 
@@ -5450,13 +5512,14 @@ with st.sidebar:
     #    LAN devices (Landon's laptop/phone) still only see Student.
     #  - Hosted (a real server, where everyone is "non-local"): the localhost
     #    trick can't tell parent from kid, so parent mode is unlocked with a
-    #    passcode from the PARENT_PASSCODE env var (or a parent_passcode
-    #    setting). No passcode configured on a host = Student-only, which is
-    #    the safe default.
+    #    passcode. PARENT_PASSCODE (env) is the deploy-time default; a parent
+    #    can then override it from Settings (parent_passcode setting), which
+    #    takes precedence so each household can set its own without a redeploy.
+    #    No passcode configured either way = Student-only, the safe default.
     client_ip = st.context.ip_address
     is_local = client_ip in (None, "127.0.0.1", "::1", "localhost")
     force_student = st.query_params.get("view") == "student"
-    parent_passcode = os.getenv("PARENT_PASSCODE") or setting_get("parent_passcode")
+    parent_passcode = setting_get("parent_passcode") or os.getenv("PARENT_PASSCODE")
 
     if is_local and not force_student:
         mode = st.radio("Mode", ["🔑 Parent", "🎒 Student"], label_visibility="collapsed")
@@ -5534,7 +5597,7 @@ with st.sidebar:
             ("Travel Log", "🧳"), ("Resources", "📎")],
             "nav_extras", "student_view")
         _nav_group("⋯ More", [
-            ("Day 1 Checklist", "🚀"), ("8th Grade Scope", "📋"), ("My Logins", "🔑")],
+            ("Day 1 Checklist", "🚀"), ("Grade Scope", "📋"), ("My Logins", "🔑")],
             "nav_more", "student_view")
 
     if mode == "🔑 Parent":
@@ -5545,7 +5608,7 @@ with st.sidebar:
             ("Review & Approve", "🕓"), ("Manual Log", "📝"), ("Grading", "🎓")],
             "pnav_daily", "parent_view")
         _nav_group("📊 Progress", [
-            ("Dashboard", "📊"), ("Curriculum", "📚"), ("8th Grade Scope", "📋")],
+            ("Dashboard", "📊"), ("Curriculum", "📚"), ("Grade Scope", "📋")],
             "pnav_progress", "parent_view")
         _nav_group("🎯 Content", [
             ("Plan Blender", "🎛️"), ("Passion Track", "🗺️"), ("Foundations", "🧭"),
@@ -5560,12 +5623,12 @@ with st.sidebar:
 
         with st.expander("➕ Add a student"):
             n = st.text_input("Name", key="add_name")
-            g = st.text_input("Grade (e.g. 8th)", key="add_grade")
+            g = st.selectbox("Grade", ["8th", "9th"], key="add_grade")
             y = st.text_input("School year (e.g. 2026-2027)", key="add_year")
             if st.button("Add"):
                 if n.strip():
                     conn.execute("INSERT INTO students (name, grade, school_year) "
-                                 "VALUES (?, ?, ?)", (n.strip(), g.strip(), y.strip()))
+                                 "VALUES (?, ?, ?)", (n.strip(), g, y.strip()))
                     conn.commit()
                     st.rerun()
 
@@ -6076,8 +6139,8 @@ if not parent_mode:
                    "Mark work off over on 📅 Today.")
         render_week_board(_d)
 
-    elif st.session_state.student_view == "8th Grade Scope":
-        render_scope_reference()
+    elif st.session_state.student_view == "Grade Scope":
+        render_scope_reference(student_row["grade"])
 
     elif st.session_state.student_view == "Passion Track":
         school_year = student_row["school_year"] or "current"
@@ -6448,9 +6511,9 @@ else:
         st.divider()
         render_proposals_review(student_id, school_year)
 
-    # ---- 8th Grade Scope
-    elif parent_view == "8th Grade Scope":
-        render_scope_reference()
+    # ---- Grade Scope
+    elif parent_view == "Grade Scope":
+        render_scope_reference(student_row["grade"])
 
     # ---- Quest Board
     elif parent_view == "Passion Track":
@@ -6579,8 +6642,37 @@ else:
 
     # ---- Settings
     elif parent_view == "Settings":
-        st.caption("Schedule, curriculum links, and weekly hour targets are constants "
-                   "near the top of app.py — edit that file to change the plan.")
+        st.subheader("Student grade")
+        st.caption("Sets which grade scope the student sees (📋 Grade Scope). "
+                   "9th grade adds the high-school-credit / transcript framing.")
+        _, cur_label = scope_for_grade(student_row["grade"])
+        new_grade = st.selectbox("Grade", ["8th", "9th"],
+                                 index=["8th", "9th"].index(cur_label),
+                                 key="settings_grade")
+        if new_grade != student_row["grade"]:
+            if st.button("Save grade", type="primary"):
+                conn.execute("UPDATE students SET grade = ? WHERE id = ?",
+                             (new_grade, student_id))
+                conn.commit()
+                st.success(f"Grade set to {new_grade}.")
+                st.rerun()
+
+        st.divider()
+        st.subheader("Parent passcode")
+        st.caption("The passcode this household's parent uses to unlock Parent "
+                   "mode on the hosted site. Leave the PARENT_PASSCODE env var "
+                   "unset on the host to use this instead.")
+        cur_code = setting_get("parent_passcode") or ""
+        new_code = st.text_input("Passcode", value=cur_code, type="password",
+                                 key="settings_passcode")
+        if st.button("Save passcode"):
+            setting_set("parent_passcode", new_code.strip())
+            st.success("Saved." if new_code.strip() else "Cleared.")
+
+        st.divider()
+        st.caption("The weekly schedule, curriculum links, and hour targets are "
+                   "still constants near the top of app.py — edit that file to "
+                   "change the plan.")
 
     elif parent_view == "Resources":
         render_resources_tab(parent_mode=True)
