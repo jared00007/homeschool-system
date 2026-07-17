@@ -1314,13 +1314,41 @@ def format_elapsed(seconds):
 # Daily wellness check-in — separate from hour-compliance logging (see
 # render_health_habits_checkin for why).
 HEALTH_HABITS = [
-    {"key": "exercise", "emoji": "🏃", "label": "Got physical activity"},
-    {"key": "water", "emoji": "💧", "label": "Drank enough water"},
-    {"key": "sleep", "emoji": "😴", "label": "Got a full night's sleep"},
-    {"key": "nutrition", "emoji": "🥗", "label": "Made a healthy food choice"},
+    {"key": "exercise", "emoji": "🏃", "label": "Moved my body"},
+    {"key": "water", "emoji": "💧", "label": "Drank water"},
+    {"key": "sleep", "emoji": "😴", "label": "Slept enough"},
+    {"key": "nutrition", "emoji": "🥗", "label": "Ate something decent"},
 ]
 
 RATING_SCALE = ["😞", "😕", "😐", "🙂", "😄"]  # index+1 = stored 1-5 rating
+
+# One-tap answers to "what got in the way today?". Deliberately tappable
+# instead of a text box: a 13-year-old will not write a sentence every day,
+# but he'll tap a chip — and chips produce data you can actually count and
+# chart, which prose never was. "Nailed it" matters as much as the negative
+# ones: without a positive option there's no way to tell a genuinely good day
+# apart from a day he just skipped the question.
+FRICTION_TAGS = [
+    "😵‍💫 Confusing", "🥱 Couldn't focus", "🐌 Dragged on", "🏃 Went too fast",
+    "📚 Too much of it", "😤 Frustrating", "✨ Nailed it",
+]
+POSITIVE_FRICTION_TAG = "✨ Nailed it"
+
+# A different physical micro-challenge each day (rotates by date, same way the
+# daily trivia does). Small enough to actually do between blocks, and the
+# novelty is the point — a fixed "did you stretch?" checkbox goes stale fast.
+DAILY_MOVES = [
+    "🧘 Two-minute stretch — reach for the ceiling, then your toes",
+    "🚶 Ten-minute walk outside. No phone.",
+    "💪 As many push-ups as you can in 60 seconds",
+    "🦵 Wall sit for 30 seconds. Yes, the whole 30.",
+    "🏃 Up and down the stairs five times",
+    "🤸 20 jumping jacks",
+    "🧍 Stand up and shake it out for one full minute",
+    "🎒 Carry something heavy across the yard and back",
+    "🕺 One song, dance like nobody's filming. (Nobody is.)",
+    "👀 Look out a window at something far away for 60 seconds — eye break",
+]
 
 
 # ------------------------------------------------------------- database
@@ -1396,6 +1424,7 @@ def get_conn():
         nutrition INTEGER DEFAULT 0, journal TEXT,
         day_rating INTEGER, mood_rating INTEGER,
         lesson_score INTEGER, lesson_feedback TEXT,
+        friction_tags TEXT, rough_subject TEXT, daily_move INTEGER DEFAULT 0,
         UNIQUE(student_id, log_date),
         FOREIGN KEY (student_id) REFERENCES students (id))""")
     conn.execute("""CREATE TABLE IF NOT EXISTS holidays (
@@ -1470,6 +1499,16 @@ def get_conn():
         conn.execute("ALTER TABLE health_habits ADD COLUMN lesson_score INTEGER")
     if "lesson_feedback" not in cols:
         conn.execute("ALTER TABLE health_habits ADD COLUMN lesson_feedback TEXT")
+    # Tappable friction chips + which subject was roughest, replacing the open
+    # text box as the primary "what went wrong" signal. day_rating is likewise
+    # no longer collected — it and mood_rating were the same question to a
+    # teenager, so mood_rating is now the single wellbeing read.
+    if "friction_tags" not in cols:
+        conn.execute("ALTER TABLE health_habits ADD COLUMN friction_tags TEXT")
+    if "rough_subject" not in cols:
+        conn.execute("ALTER TABLE health_habits ADD COLUMN rough_subject TEXT")
+    if "daily_move" not in cols:
+        conn.execute("ALTER TABLE health_habits ADD COLUMN daily_move INTEGER DEFAULT 0")
     # migration: class codes (ReadWorks, CommonLit, Kahoot etc. hand these out
     # when the parent creates a class; the student needs one to join, and it's
     # easy to lose track of otherwise)
@@ -2430,18 +2469,21 @@ def get_applicable_account_services(student_id, school_year):
 
 def get_health_habits_day(student_id, log_date):
     row = conn.execute(
-        "SELECT exercise, water, sleep, nutrition, journal, day_rating, "
-        "mood_rating, lesson_score, lesson_feedback FROM health_habits "
-        "WHERE student_id = ? AND log_date = ?",
+        "SELECT exercise, water, sleep, nutrition, journal, mood_rating, "
+        "lesson_score, lesson_feedback, friction_tags, rough_subject, "
+        "daily_move FROM health_habits WHERE student_id = ? AND log_date = ?",
         (student_id, log_date.isoformat())).fetchone()
     if row is None:
         return {"exercise": 0, "water": 0, "sleep": 0, "nutrition": 0,
-                "journal": "", "day_rating": None, "mood_rating": None,
-                "lesson_score": None, "lesson_feedback": ""}
+                "journal": "", "mood_rating": None, "lesson_score": None,
+                "lesson_feedback": "", "friction_tags": [],
+                "rough_subject": "", "daily_move": 0}
     return {"exercise": row[0], "water": row[1], "sleep": row[2],
             "nutrition": row[3], "journal": row[4] or "",
-            "day_rating": row[5], "mood_rating": row[6],
-            "lesson_score": row[7], "lesson_feedback": row[8] or ""}
+            "mood_rating": row[5], "lesson_score": row[6],
+            "lesson_feedback": row[7] or "",
+            "friction_tags": [t for t in (row[8] or "").split(",") if t],
+            "rough_subject": row[9] or "", "daily_move": row[10] or 0}
 
 
 def set_health_habit(student_id, log_date, habit_key, value):
@@ -2480,8 +2522,7 @@ def set_health_rating(student_id, log_date, field, value):
 
 
 def set_lesson_reflection(student_id, log_date, score, feedback):
-    """Today's lesson score (1-5, same scale as day/mood) plus one open field
-    for what was hard, unclear, or could be better."""
+    """Today's lesson score (1-5) plus the optional open text field."""
     conn.execute("""INSERT INTO health_habits (student_id, log_date) VALUES (?, ?)
         ON CONFLICT(student_id, log_date) DO NOTHING""",
         (student_id, log_date.isoformat()))
@@ -2489,6 +2530,40 @@ def set_lesson_reflection(student_id, log_date, score, feedback):
         lesson_feedback = ? WHERE student_id = ? AND log_date = ?""",
         (score, feedback, student_id, log_date.isoformat()))
     conn.commit()
+
+
+def set_friction(student_id, log_date, tags, rough_subject):
+    """The tapped friction chips + which subject was roughest."""
+    conn.execute("""INSERT INTO health_habits (student_id, log_date) VALUES (?, ?)
+        ON CONFLICT(student_id, log_date) DO NOTHING""",
+        (student_id, log_date.isoformat()))
+    conn.execute("""UPDATE health_habits SET friction_tags = ?, rough_subject = ?
+        WHERE student_id = ? AND log_date = ?""",
+        (",".join(tags), rough_subject or None, student_id, log_date.isoformat()))
+    conn.commit()
+
+
+def set_daily_move(student_id, log_date, done):
+    conn.execute("""INSERT INTO health_habits (student_id, log_date) VALUES (?, ?)
+        ON CONFLICT(student_id, log_date) DO NOTHING""",
+        (student_id, log_date.isoformat()))
+    conn.execute("""UPDATE health_habits SET daily_move = ?
+        WHERE student_id = ? AND log_date = ?""",
+        (1 if done else 0, student_id, log_date.isoformat()))
+    conn.commit()
+
+
+def get_daily_move(d):
+    """Same move all day for a given date, a different one tomorrow."""
+    return random.Random(d.toordinal() + 7).choice(DAILY_MOVES)
+
+
+def debrief_is_done(habits_row):
+    """A debrief counts as done once both ratings are in — the two taps that
+    carry the actual signal. Deliberately does NOT require the habit boxes:
+    gating it on those rewards ticking boxes rather than answering honestly."""
+    return (habits_row["mood_rating"] is not None
+            and habits_row["lesson_score"] is not None)
 
 
 def get_health_habits_range(student_id, start_date, end_date):
@@ -2499,21 +2574,30 @@ def get_health_habits_range(student_id, start_date, end_date):
 
 
 def get_health_streak(student_id):
-    """Consecutive fully-checked days ending at the most recently completed day
-    (today doesn't break the streak if it's just not filled in yet)."""
+    """Consecutive days he actually checked in, ending at the most recently
+    completed day (today doesn't break the streak if it's just not filled in
+    yet).
+
+    This counts *showing up*, not *doing everything right*. It used to require
+    all four habit boxes ticked, which quietly made the streak a reason to
+    tick them whether or not they were true — a streak worth protecting is a
+    streak worth lying for, and self-reported habits are unverifiable. Rewarding
+    the honest report instead means the data is worth reading.
+    """
     df = get_health_habits_range(student_id, date.today() - timedelta(days=120),
                                  date.today())
     by_date = {r["log_date"]: r for _, r in df.iterrows()} if not df.empty else {}
 
-    def is_complete(d):
+    def checked_in(d):
         row = by_date.get(d.isoformat())
-        return row is not None and all(row[h["key"]] for h in HEALTH_HABITS)
+        return (row is not None and pd.notna(row["mood_rating"])
+                and pd.notna(row["lesson_score"]))
 
     d = date.today()
-    if not is_complete(d):
+    if not checked_in(d):
         d -= timedelta(days=1)
     streak = 0
-    while is_complete(d):
+    while checked_in(d):
         streak += 1
         d -= timedelta(days=1)
     return streak
@@ -3823,137 +3907,199 @@ def _week_habit_grid(student_id, today):
 
 
 def render_health_habits_checkin(student_id):
-    """Student-only: daily wellness check-in card, shown on the Today tab.
-    Returns True once the check-in counts as complete (all four habits ticked
-    and all three ratings given) so Today can treat it as a checklist item."""
+    """Student-only: the end-of-day debrief card on the Today tab. Returns True
+    once it counts as done (see debrief_is_done) so Today can treat it as a
+    checklist item.
+
+    Built for a 13-year-old, which drives every choice here: two taps to
+    "done", chips instead of a text box, honesty rewarded over performance,
+    and the typing kept optional and out of the way at the bottom.
+    """
     today = date.today()
-    today_habits = get_health_habits_day(student_id, today)
-    is_complete = (all(today_habits[h["key"]] for h in HEALTH_HABITS)
-                   and today_habits["day_rating"] is not None
-                   and today_habits["mood_rating"] is not None
-                   and today_habits["lesson_score"] is not None)
+    h = get_health_habits_day(student_id, today)
+    is_done = debrief_is_done(h)
     with st.container(border=True):
-        st.markdown(f"{'✅' if is_complete else '⬜'} **💪 Health Check-in**")
-        st.caption("A quick daily wellness check — separate from your Health "
-                   "coursework hours.")
-        cols = st.columns(len(HEALTH_HABITS))
-        for i, h in enumerate(HEALTH_HABITS):
-            with cols[i]:
-                checked = st.checkbox(
-                    f"{h['emoji']} {h['label']}", value=bool(today_habits[h["key"]]),
-                    key=f"health_{h['key']}_{today.isoformat()}")
-                if checked != bool(today_habits[h["key"]]):
-                    set_health_habit(student_id, today, h["key"], checked)
-                    st.rerun()
+        st.markdown(f"{'✅' if is_done else '⬜'} **⚡ Daily Debrief**")
+        st.caption("Two taps and you're done. Nobody's grading this — it's "
+                   "only useful if it's honest.")
 
-        streak = get_health_streak(student_id)
-        if streak > 0:
-            st.success(f"🔥 {streak}-day streak — all 4 checked!")
-
-        rc1, rc2, rc3 = st.columns(3)
+        rc1, rc2 = st.columns(2)
         with rc1:
-            st.caption("How was your day?")
-            day_pick = st.radio(
-                "Day rating", RATING_SCALE, horizontal=True,
-                index=(today_habits["day_rating"] - 1)
-                if today_habits["day_rating"] else None,
-                key=f"health_day_rating_{today.isoformat()}",
-                label_visibility="collapsed")
-            if day_pick is not None:
-                new_val = RATING_SCALE.index(day_pick) + 1
-                if new_val != today_habits["day_rating"]:
-                    set_health_rating(student_id, today, "day_rating", new_val)
-        with rc2:
-            st.caption("How's your mood?")
+            st.caption("How are **you** doing?")
             mood_pick = st.radio(
                 "Mood rating", RATING_SCALE, horizontal=True,
-                index=(today_habits["mood_rating"] - 1)
-                if today_habits["mood_rating"] else None,
+                index=(h["mood_rating"] - 1) if h["mood_rating"] else None,
                 key=f"health_mood_rating_{today.isoformat()}",
                 label_visibility="collapsed")
             if mood_pick is not None:
                 new_val = RATING_SCALE.index(mood_pick) + 1
-                if new_val != today_habits["mood_rating"]:
+                if new_val != h["mood_rating"]:
                     set_health_rating(student_id, today, "mood_rating", new_val)
-        with rc3:
-            st.caption("How'd today's lesson go?")
+                    st.rerun()
+        with rc2:
+            st.caption("How'd the **schoolwork** go?")
             lesson_pick = st.radio(
                 "Lesson score", RATING_SCALE, horizontal=True,
-                index=(today_habits["lesson_score"] - 1)
-                if today_habits["lesson_score"] else None,
+                index=(h["lesson_score"] - 1) if h["lesson_score"] else None,
                 key=f"health_lesson_score_{today.isoformat()}",
                 label_visibility="collapsed")
+            new_score = (RATING_SCALE.index(lesson_pick) + 1
+                         if lesson_pick is not None else None)
+            if new_score != h["lesson_score"]:
+                set_lesson_reflection(student_id, today, new_score,
+                                      h["lesson_feedback"])
+                st.rerun()
 
-        new_score = (RATING_SCALE.index(lesson_pick) + 1
-                     if lesson_pick is not None else None)
-        lesson_feedback = st.text_input(
-            "Anything hard, unclear, or that could be better?",
-            value=today_habits["lesson_feedback"],
-            key=f"health_lesson_feedback_{today.isoformat()}",
-            placeholder="Optional — what tripped you up, or what would help?")
-        if (new_score != today_habits["lesson_score"]
-                or lesson_feedback != today_habits["lesson_feedback"]):
-            set_lesson_reflection(student_id, today, new_score,
-                                  lesson_feedback.strip())
+        st.caption("Anything get in the way? Tap what fits — or don't, "
+                   "if it was all fine.")
+        picked = st.pills("Friction", FRICTION_TAGS, selection_mode="multi",
+                          default=h["friction_tags"],
+                          key=f"health_friction_{today.isoformat()}",
+                          label_visibility="collapsed")
+        picked = picked or []
+        gripes = [t for t in picked if t != POSITIVE_FRICTION_TAG]
+        # Only ask which subject once he's said something actually went wrong —
+        # no point asking "what was roughest?" about a day he says was fine.
+        rough = h["rough_subject"]
+        if gripes:
+            opts = ["—"] + WA_SUBJECTS + ["Electives"]
+            rough_pick = st.selectbox(
+                "Which one was the worst of it?", opts,
+                index=opts.index(rough) if rough in opts else 0,
+                key=f"health_rough_{today.isoformat()}")
+            rough = "" if rough_pick == "—" else rough_pick
+        else:
+            rough = ""
+        if picked != h["friction_tags"] or rough != h["rough_subject"]:
+            set_friction(student_id, today, picked, rough)
+            st.rerun()
 
-        st.caption("Journal (optional — just thoughts, no structure needed):")
-        journal_text = st.text_area(
-            "Journal", value=today_habits["journal"],
-            key=f"health_journal_{today.isoformat()}", label_visibility="collapsed",
-            placeholder="Anything on your mind today? Totally optional.", height=100)
-        if journal_text != today_habits["journal"]:
-            set_health_journal(student_id, today, journal_text)
+        move = get_daily_move(today)
+        mv1, mv2 = st.columns([3, 1])
+        with mv1:
+            st.markdown(f"**Today's move:** {move}")
+        with mv2:
+            move_done = st.checkbox("Did it 💥", value=bool(h["daily_move"]),
+                                    key=f"health_move_{today.isoformat()}")
+            if move_done != bool(h["daily_move"]):
+                set_daily_move(student_id, today, move_done)
+                st.rerun()
+
+        st.caption("Basics — tick what's actually true:")
+        cols = st.columns(len(HEALTH_HABITS))
+        for i, hb in enumerate(HEALTH_HABITS):
+            with cols[i]:
+                checked = st.checkbox(
+                    f"{hb['emoji']} {hb['label']}", value=bool(h[hb["key"]]),
+                    key=f"health_{hb['key']}_{today.isoformat()}")
+                if checked != bool(h[hb["key"]]):
+                    set_health_habit(student_id, today, hb["key"], checked)
+                    st.rerun()
+
+        streak = get_health_streak(student_id)
+        if streak > 0:
+            st.success(f"🔥 {streak}-day streak — you've checked in "
+                       f"{streak} day{'s' if streak != 1 else ''} running.")
+
+        with st.expander("💬 Want to say more? (totally optional)"):
+            lesson_feedback = st.text_input(
+                "Anything hard, unclear, or that could be better?",
+                value=h["lesson_feedback"],
+                key=f"health_lesson_feedback_{today.isoformat()}",
+                placeholder="Only if the chips above didn't cover it")
+            if lesson_feedback != h["lesson_feedback"]:
+                set_lesson_reflection(student_id, today, h["lesson_score"],
+                                      lesson_feedback.strip())
+
+            journal_text = st.text_area(
+                "Journal", value=h["journal"],
+                key=f"health_journal_{today.isoformat()}",
+                placeholder="Anything on your mind. Nobody reads this but you "
+                            "and your parent.", height=100)
+            if journal_text != h["journal"]:
+                set_health_journal(student_id, today, journal_text)
 
         st.caption("This week:")
         _week_habit_grid(student_id, today)
-    return is_complete
+    return is_done
 
 
 def render_health_habits_summary(student_id):
-    """Parent-only: read-only weekly view + streak + journal/rating entries."""
-    st.subheader("💪 Health Habits")
-    st.caption("Daily wellness check-ins he logs himself — exercise, water, "
-               "sleep, nutrition, day/mood/lesson ratings, what was hard or "
-               "unclear, and an optional journal. Separate from Health "
-               "coursework hours.")
+    """Parent-only: read-only weekly view of his Daily Debrief."""
+    st.subheader("⚡ Daily Debrief")
+    st.caption("What he logs himself at the end of each day — how he's doing, "
+               "how the schoolwork landed, what got in the way, the basics, "
+               "and an optional journal. Separate from Health coursework hours.")
     week_df = get_health_habits_range(student_id, date.today() - timedelta(days=6),
                                       date.today())
     streak = get_health_streak(student_id)
-    m1, m2 = st.columns(2)
-    m1.metric("Current streak", f"{streak} day{'s' if streak != 1 else ''}")
-    # Lesson score is the one rating that says "is the teaching landing?", so
-    # surface the 7-day average rather than making it hunt-through-the-list.
-    scores = week_df["lesson_score"].dropna() if not week_df.empty else pd.Series(dtype=float)
-    if not scores.empty:
-        avg = scores.mean()
-        m2.metric("Lesson score (7-day avg)",
-                  f"{RATING_SCALE[min(int(round(avg)) - 1, 4)]} {avg:.1f}/5",
-                  help="Average of his daily \"How'd today's lesson go?\" rating.")
-    else:
-        m2.metric("Lesson score (7-day avg)", "—")
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Check-in streak", f"{streak} day{'s' if streak != 1 else ''}",
+              help="Consecutive days he filled the debrief in at all — this "
+                   "counts showing up, not doing everything right.")
+
+    def _avg_metric(col, label, field, help_text):
+        vals = week_df[field].dropna() if not week_df.empty else pd.Series(dtype=float)
+        if vals.empty:
+            col.metric(label, "—")
+        else:
+            avg = vals.mean()
+            col.metric(label, f"{RATING_SCALE[min(int(round(avg)) - 1, 4)]} {avg:.1f}/5",
+                       help=help_text)
+
+    _avg_metric(m2, "How he's doing (7-day)", "mood_rating",
+                "Average of his daily \"How are you doing?\" rating.")
+    _avg_metric(m3, "Schoolwork (7-day)", "lesson_score",
+                "Average of his daily \"How'd the schoolwork go?\" rating.")
+
+    # The friction chips are the point of the whole redesign: one tap from him,
+    # but counted across a week they say "Math has been confusing 3 times",
+    # which is something you can actually act on. Prose never aggregated.
+    if not week_df.empty:
+        tally = {}
+        for tags in week_df["friction_tags"].fillna(""):
+            for t in [x for x in tags.split(",") if x]:
+                tally[t] = tally.get(t, 0) + 1
+        if tally:
+            st.markdown("**What got in the way this week**")
+            st.markdown("  ".join(
+                f"{tag} ×{n}" for tag, n in
+                sorted(tally.items(), key=lambda kv: -kv[1])))
+            rough = week_df["rough_subject"].fillna("")
+            rough = rough[rough.str.strip().ne("")]
+            if not rough.empty:
+                counts = rough.value_counts()
+                st.caption("Roughest subject: " + ", ".join(
+                    f"{s} ×{n}" for s, n in counts.items()))
+
     st.caption("This week:")
     _week_habit_grid(student_id, date.today())
 
     has_content = (week_df["journal"].fillna("").str.strip().ne("")
-                  | week_df["day_rating"].notna()
                   | week_df["mood_rating"].notna()
                   | week_df["lesson_score"].notna()
+                  | week_df["friction_tags"].fillna("").str.strip().ne("")
                   | week_df["lesson_feedback"].fillna("").str.strip().ne("")
                   ) if not week_df.empty else pd.Series(dtype=bool)
     entries = week_df[has_content] if not week_df.empty else week_df
     if not entries.empty:
-        with st.expander("This week's check-ins"):
+        with st.expander("Day by day"):
             for _, r in entries.sort_values("log_date", ascending=False).iterrows():
-                day_e = RATING_SCALE[int(r["day_rating"]) - 1] if pd.notna(r["day_rating"]) else "—"
                 mood_e = RATING_SCALE[int(r["mood_rating"]) - 1] if pd.notna(r["mood_rating"]) else "—"
                 lesson_e = (RATING_SCALE[int(r["lesson_score"]) - 1]
                             if pd.notna(r["lesson_score"]) else "—")
-                st.markdown(f"**{fmt_date(r['log_date'])}** · Day: {day_e} · "
-                            f"Mood: {mood_e} · Lesson: {lesson_e}")
+                st.markdown(f"**{fmt_date(r['log_date'])}** · Him: {mood_e} · "
+                            f"Schoolwork: {lesson_e}")
+                tags = [t for t in (r["friction_tags"] or "").split(",") if t]
+                if tags:
+                    line = "  ".join(tags)
+                    if r["rough_subject"]:
+                        line += f"  — worst: **{r['rough_subject']}**"
+                    st.caption(line)
                 if r["lesson_feedback"] and str(r["lesson_feedback"]).strip():
-                    st.caption(f"🧩 Hard/unclear: {r['lesson_feedback']}")
+                    st.caption(f"🧩 In his words: {r['lesson_feedback']}")
                 if r["journal"] and r["journal"].strip():
-                    st.caption(r["journal"])
+                    st.caption(f"📓 {r['journal']}")
     else:
         st.caption("No check-in details this week yet.")
 
