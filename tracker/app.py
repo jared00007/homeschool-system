@@ -5385,15 +5385,23 @@ with st.sidebar:
                             label_visibility="collapsed")
         else:
             mode = "🎒 Student"
-            with st.expander("🔑 Parent access"):
-                code = st.text_input("Passcode", type="password",
-                                     key="parent_passcode_input")
-                if st.button("Unlock"):
-                    if code == parent_passcode:
-                        st.session_state["parent_unlocked"] = True
-                        st.rerun()
-                    else:
-                        st.error("Wrong passcode.")
+            # A form (not a bare text_input + button) so the passcode commits
+            # together with the submit and Enter works — otherwise Streamlit's
+            # text-then-button race needs two clicks. Kept expanded and the
+            # error shown outside the form so a wrong code is actually visible
+            # (an st.error inside a collapsing expander isn't).
+            with st.expander("🔑 Parent access", expanded=True):
+                with st.form("parent_unlock", clear_on_submit=True):
+                    code = st.text_input("Passcode", type="password")
+                    if st.form_submit_button("Unlock"):
+                        if code == parent_passcode:
+                            st.session_state["parent_unlocked"] = True
+                            st.session_state.pop("parent_bad_code", None)
+                            st.rerun()
+                        else:
+                            st.session_state["parent_bad_code"] = True
+                if st.session_state.get("parent_bad_code"):
+                    st.error("Wrong passcode — try again.")
     else:
         mode = "🎒 Student"
 
