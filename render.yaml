@@ -1,25 +1,23 @@
-# Render blueprint for Compass — a Dockerized Streamlit web service backed by
-# a managed Postgres. Render (unlike Streamlit Community Cloud, which was the
-# unresolved-failure host in cloud-archive/) gives real logs + a shell, which
-# is why the plan picks it. Deploy: push this repo to GitHub, then in Render →
-# "New +" → "Blueprint" and point it at the repo.
+# Render blueprint for Compass — a free Dockerized Streamlit web service that
+# connects to a *free* external Postgres (Neon). This is the zero-cost testing
+# setup: Render's web service is free (sleeps when idle), and the database is a
+# free Neon project you create separately and paste in as DATABASE_URL. One of
+# these per household keeps families fully isolated at ~$0.
+#
+# Deploy (per household): Render → "New +" → "Blueprint" → this repo, branch
+# compass-v2. Then set the two env vars below in the dashboard.
+#
+# To go always-on later, change plan to `starter` ($7/mo). To go multi-tenant
+# (one instance for everyone) is a separate, larger build — see DEPLOY.md.
 services:
   - type: web
     name: compass
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: free             # free web: sleeps after ~15m idle, ~30-60s cold
-                           # start on the next visit — fine for testing. Bump
-                           # to `starter` ($7/mo) for always-on later.
+    plan: free             # sleeps after ~15m idle, ~30-60s cold start; $0
     healthCheckPath: /_stcore/health
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: compass-db
-          property: connectionString
+        sync: false        # paste your free Neon connection string here
       - key: PARENT_PASSCODE
-        sync: false        # set this in the Render dashboard, not in git
-
-databases:
-  - name: compass-db
-    plan: basic-256mb
+        sync: false        # this household's parent unlock code

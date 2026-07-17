@@ -16,24 +16,44 @@ strategy doc's multi-family direction needs and the local-only app can't do.
 
 ## Render (recommended — real logs + shell, unlike Streamlit Community Cloud)
 
-1. Push this repo to GitHub.
-2. Render → **New +** → **Blueprint** → pick the repo. It reads `render.yaml`
-   and creates the web service + a managed Postgres, wiring `DATABASE_URL`
-   automatically.
-3. In the service's **Environment**, set `PARENT_PASSCODE` to something only
-   you know.
-4. First deploy: the app creates its own tables on boot (same `get_conn()`
-   that runs locally) and seeds Foundations/Smithsonian/etc.
-5. To bring your existing local data across, run
-   `cloud-archive/migrate_to_cloud.py` with `DATABASE_URL` pointed at the
-   Render database (see that file's header). Optional — a fresh hosted DB
-   works fine, it just starts empty.
+The current `render.yaml` is the **free** setup: a free Render web service +
+an external **free Neon Postgres** you paste in. ~$0 per household.
+
+### Per household (repeat for each family)
+
+1. **Free database (Neon).** Go to neon.tech → sign up (free) → **New
+   Project** (name it e.g. `compass-<family>`). Copy the **pooled** connection
+   string it shows — looks like
+   `postgresql://<user>:<pass>@ep-xxx-pooler.<region>.aws.neon.tech/<db>?sslmode=require`.
+   The app requires SSL, and Neon strings already include `sslmode=require`.
+2. **Free web (Render).** Render → **New +** → **Blueprint** → pick the repo,
+   branch `compass-v2`. It reads `render.yaml` and creates one free web
+   service (no paid database — that's the change from the old blueprint).
+3. Set the two env vars on the service:
+   - `DATABASE_URL` = the Neon string from step 1.
+   - `PARENT_PASSCODE` = this family's parent unlock code.
+4. Deploy. On first visit the app creates its tables in the Neon DB and seeds
+   Foundations/Smithsonian/quests. **Verified working against real Postgres.**
+5. Give the family: their Render URL, their passcode, and the student link
+   `https://<their-url>/?view=student`.
+
+Each family = its own Neon project + its own Render service = fully isolated,
+~$0. Free tiers sleep/suspend when idle (Render web ~15 min, Neon after a
+while) — the first visit after a quiet stretch takes ~30–60s to wake, then
+it's normal. Fine for testing; bump the Render web to `starter` ($7/mo) for
+always-on, or keep Neon and pay only if you outgrow the free tier.
+
+### Bringing local data across (optional)
+
+`cloud-archive/migrate_to_cloud.py` copies a local SQLite DB into Postgres —
+point its `DATABASE_URL` at the Neon string. A fresh hosted DB works fine and
+just starts empty, which is what you want for a new family anyway.
 
 ## Railway / Fly.io
 
 Same idea, no blueprint file needed: both build the `Dockerfile` directly.
-Provision a Postgres add-on, set `DATABASE_URL` and `PARENT_PASSCODE` in the
-service env, deploy.
+Provision (or point at) a Postgres, set `DATABASE_URL` and `PARENT_PASSCODE`
+in the service env, deploy.
 
 ## Local Docker smoke test
 
