@@ -17,6 +17,7 @@ Modes:
 from html import escape as escape_html
 import os
 import random
+import re
 import sqlite3
 import calendar as cal
 import time
@@ -2670,6 +2671,163 @@ def reopen_foundations_module(module_id, student_id):
     conn.commit()
 
 
+# ----- Weekly Plan Blender (the defining Compass mechanic) -----
+DEFAULT_BLEND_RATIO = 60       # % of the plan that is Passion (rest Foundations)
+DEFAULT_WEEKLY_TARGET = 6.0    # project hours/week the blender plans for
+
+
+def get_blend_settings(student_id):
+    ratio = setting_get(f"blend_ratio_{student_id}")
+    target = setting_get(f"weekly_hours_target_{student_id}")
+    return {"ratio": int(ratio) if ratio else DEFAULT_BLEND_RATIO,
+            "target": float(target) if target else DEFAULT_WEEKLY_TARGET}
+
+
+def set_blend_settings(student_id, ratio, target):
+    setting_set(f"blend_ratio_{student_id}", str(int(ratio)))
+    setting_set(f"weekly_hours_target_{student_id}", str(float(target)))
+
+
+def _monday_of(d):
+    return d - timedelta(days=d.weekday())
+
+
+def _interest_keywords(profile):
+    """Bare keywords from the interest chips (emoji + connectors stripped),
+    for loosely ranking which pool quests match what he's into."""
+    words = set()
+    for chip in profile.get("interests", []):
+        txt = chip.split(" ", 1)[1] if " " in chip else chip
+        for w in re.split(r"[^a-z]+", txt.lower()):
+            if len(w) > 2 and w not in ("and", "the"):
+                words.add(w)
+    return words
+
+
+def _quest_interest_score(row, kw):
+    if not kw:
+        return 0
+    hay = " ".join(str(row.get(c, "") or "") for c in
+                   ("title", "subjects", "subject", "description")).lower()
+    return sum(1 for w in kw if w in hay)
+
+
+def get_weekly_plan(student_id, week_start):
+    monday = _monday_of(week_start)
+    return pd.read_sql("""SELECT * FROM weekly_plan_items
+        WHERE student_id = ? AND week_start = ? ORDER BY sort_order""",
+        conn, params=[student_id, monday.isoformat()])
+
+
+def generate_weekly_plan(student_id, school_year, week_start):
+    """Build one blended week from the ratio + target: fill ~ratio% of the
+    hours with Passion quests (his queued ones first, then interest-matched
+    pool quests auto-added as quests) and the rest with not-yet-done
+    Foundations modules, interleaved into a single list. Completed items from
+    an earlier generation of the same week are kept and count toward the
+    targets; only the unfinished ones are regenerated."""
+    monday = _monday_of(week_start)
+    s = get_blend_settings(student_id)
+    passion_target = s["target"] * s["ratio"] / 100.0
+    found_target = s["target"] - passion_target
+
+    existing = get_weekly_plan(student_id, monday)
+    done = existing[existing["status"] == "done"] if not existing.empty else existing
+    done_passion_h = done[done["kind"] == "passion"]["est_hours"].sum() if not done.empty else 0.0
+    done_found_h = done[done["kind"] == "foundations"]["est_hours"].sum() if not done.empty else 0.0
+    done_refs = {(r["kind"], r["ref_id"]) for _, r in done.iterrows()} if not done.empty else set()
+
+    # wipe the not-done items; we're about to rebuild them
+    conn.execute("""DELETE FROM weekly_plan_items
+        WHERE student_id = ? AND week_start = ? AND status != 'done'""",
+        (student_id, monday.isoformat()))
+
+    profile = get_passion_profile(student_id)
+    kw = _interest_keywords(profile)
+
+    # ---- passion candidates: his own queued/in-progress quests first
+    passion = []
+    mine = get_student_fun_projects(student_id, school_year)
+    if not mine.empty:
+        act = mine[mine["status"].isin(["planned", "in_progress"])]
+        act = act.assign(_score=[_quest_interest_score(r, kw) for _, r in act.iterrows()])
+        for _, r in act.sort_values("_score", ascending=False).iterrows():
+            if ("passion", int(r["id"])) in done_refs:
+                continue
+            passion.append({"ref_id": int(r["id"]), "title": r["title"],
+                            "subjects": r["subjects"] or r["subject"],
+                            "est_hours": float(r["est_hours"] or 1.0)})
+    # ---- top up from the pool (interest-ranked), auto-adding as his quests
+    have = passion_target - done_passion_h - sum(p["est_hours"] for p in passion)
+    if have > 0:
+        pool = get_fun_project_pool_df()
+        mine_titles = set(mine["title"]) if not mine.empty else set()
+        pool = pool[~pool["title"].isin(mine_titles)]
+        pool = pool.assign(_score=[_quest_interest_score(r, kw) for _, r in pool.iterrows()])
+        for _, r in pool.sort_values("_score", ascending=False).iterrows():
+            if have <= 0:
+                break
+            add_student_fun_project(student_id, school_year, r["title"],
+                                    r["subjects"] or r["subject"], r["description"],
+                                    r["steps"], r["est_hours"] or 1.0, r["icon"])
+            new_id = conn.execute("""SELECT id FROM student_fun_projects
+                WHERE student_id = ? AND title = ? ORDER BY id DESC LIMIT 1""",
+                (student_id, r["title"])).fetchone()[0]
+            eh = float(r["est_hours"] or 1.0)
+            passion.append({"ref_id": int(new_id), "title": r["title"],
+                            "subjects": r["subjects"] or r["subject"], "est_hours": eh})
+            have -= eh
+
+    # ---- foundations candidates: incomplete modules in order
+    foundations = []
+    sf = get_student_foundations(student_id)
+    if not sf.empty:
+        todo = sf[sf["prog_status"] != "complete"]
+        acc = found_target - done_found_h
+        for _, r in todo.iterrows():
+            if acc <= 0:
+                break
+            if ("foundations", int(r["id"])) in done_refs:
+                continue
+            eh = float(r["est_hours"] or 1.0)
+            foundations.append({"ref_id": int(r["id"]), "title": r["title"],
+                                "subjects": r["subjects"], "est_hours": eh})
+            acc -= eh
+
+    # ---- interleave into one blended list (passion-first per the ratio bias)
+    order = []
+    pi, fi = 0, 0
+    while pi < len(passion) or fi < len(foundations):
+        if pi < len(passion):
+            order.append(("passion", passion[pi])); pi += 1
+        if fi < len(foundations):
+            order.append(("foundations", foundations[fi])); fi += 1
+    base = int(done["sort_order"].max()) + 1 if not done.empty else 0
+    for i, (kind, it) in enumerate(order):
+        conn.execute("""INSERT INTO weekly_plan_items
+            (student_id, week_start, kind, ref_id, title, subjects, est_hours,
+             status, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, 'planned', ?)""",
+            (student_id, monday.isoformat(), kind, it["ref_id"], it["title"],
+             it["subjects"], it["est_hours"], base + i))
+    conn.commit()
+
+
+def complete_plan_item(item_id, student_id, school_year):
+    """Finish a plan item by routing to the underlying quest/module completion
+    (which logs the pending hours), then mark the plan row done."""
+    row = conn.execute("""SELECT kind, ref_id, title, subjects, est_hours
+        FROM weekly_plan_items WHERE id = ?""", (item_id,)).fetchone()
+    if not row:
+        return
+    kind, ref_id, title, subjects, est_hours = row
+    if kind == "passion":
+        finish_fun_project(ref_id, student_id, title, subjects, est_hours)
+    else:
+        complete_foundations_module(ref_id, student_id, title, subjects, est_hours)
+    conn.execute("UPDATE weekly_plan_items SET status = 'done' WHERE id = ?", (item_id,))
+    conn.commit()
+
+
 def get_proposals(student_id, status=None):
     q = "SELECT * FROM proposals WHERE student_id = ?"
     params = [student_id]
@@ -3670,6 +3828,133 @@ def render_foundations_admin():
                 st.rerun()
             else:
                 st.warning("Give it a title.")
+
+
+def _plan_item_done(item, fin_quest_ids, done_module_ids):
+    """A plan item counts as done if its own row says so OR the underlying
+    quest/module was finished elsewhere (Passion Track / Foundations tab)."""
+    if item["status"] == "done":
+        return True
+    if item["kind"] == "passion":
+        return int(item["ref_id"]) in fin_quest_ids
+    return int(item["ref_id"]) in done_module_ids
+
+
+def render_this_week(student_id, school_year, key_prefix):
+    """The blended weekly plan — the defining Compass mechanic. Passion quests
+    and Foundations modules in ONE sprint board at the parent-set ratio, so
+    life skills are woven in, not bolted on."""
+    st.subheader("🧭 My Plan — this week")
+    st.markdown(QUEST_CARD_CSS, unsafe_allow_html=True)
+    monday = _monday_of(date.today())
+    plan = get_weekly_plan(student_id, monday)
+    s = get_blend_settings(student_id)
+
+    if plan.empty:
+        st.info("No plan for this week yet.")
+        st.caption(f"Your mix: {s['ratio']}% passion / {100 - s['ratio']}% "
+                   f"foundations, about {s['target']:g} hours of projects.")
+        if st.button("✨ Build my week", type="primary",
+                     key=f"{key_prefix}_build"):
+            generate_weekly_plan(student_id, school_year, monday)
+            st.rerun()
+        return
+
+    fin_quest_ids = {int(r["id"]) for _, r in
+                     get_student_fun_projects(student_id, school_year).iterrows()
+                     if r["status"] == "finished"}
+    sf = get_student_foundations(student_id)
+    done_module_ids = {int(r["id"]) for _, r in sf.iterrows()
+                       if r["prog_status"] == "complete"} if not sf.empty else set()
+
+    items = [dict(r) for _, r in plan.iterrows()]
+    for it in items:
+        it["_done"] = _plan_item_done(it, fin_quest_ids, done_module_ids)
+    done_ct = sum(1 for it in items if it["_done"])
+    st.progress(done_ct / len(items),
+                text=f"🔥 {done_ct} / {len(items)} done this week")
+    st.caption(f"Mix: {s['ratio']}% passion / {100 - s['ratio']}% foundations. "
+               "Parents set the mix in the Plan Blender.")
+
+    kind_badge = {"passion": "🗺️ Passion", "foundations": "🧭 Foundations"}
+    kind_color = {"passion": "#4FC3E8", "foundations": "#6FCF7A"}
+    todo = [it for it in items if not it["_done"]]
+    done = [it for it in items if it["_done"]]
+
+    lane_todo, lane_done = st.columns(2)
+    with lane_todo:
+        st.markdown(f'<div class="slane-head">🎯 To do ({len(todo)})</div>',
+                    unsafe_allow_html=True)
+        if not todo:
+            st.markdown("**Week's done. Legend. 🏆**")
+        for it in todo:
+            st.markdown(f"""
+                <div class="bcard"><div class="bcard-strip"
+                  style="background:{kind_color[it['kind']]}"></div>
+                <div class="bcard-in"><div class="bcard-t">{escape_html(it['title'])}</div>
+                <div class="bcard-when">{kind_badge[it['kind']]} · {it['est_hours']:g} hr</div>
+                </div></div>""",
+                unsafe_allow_html=True)
+            if st.button("✅ Done", key=f"{key_prefix}_done_{it['id']}",
+                         use_container_width=True):
+                complete_plan_item(int(it["id"]), student_id, school_year)
+                st.success("Logged — sent to your parent.")
+                st.rerun()
+    with lane_done:
+        st.markdown(f'<div class="slane-head done">✅ Done ({len(done)})</div>',
+                    unsafe_allow_html=True)
+        if not done:
+            st.caption("Move a card over. 👉")
+        for it in done:
+            st.markdown(f"""
+                <div class="bcard is-done"><div class="bcard-strip"
+                  style="background:{kind_color[it['kind']]}"></div>
+                <div class="bcard-in"><div class="bcard-t">{escape_html(it['title'])}</div>
+                <div class="bcard-when">{kind_badge[it['kind']]}</div></div></div>""",
+                unsafe_allow_html=True)
+
+    st.divider()
+    if st.button("🔄 Rebuild this week", key=f"{key_prefix}_regen"):
+        generate_weekly_plan(student_id, school_year, monday)
+        st.rerun()
+    st.caption("Rebuilding keeps what you've finished and refreshes the rest.")
+
+
+def render_plan_blender(student_id, school_year):
+    """Parent-only: set the passion/foundations ratio + weekly hours, and
+    (re)generate his blended week."""
+    st.subheader("🎛️ Plan Blender")
+    st.caption("How his week is mixed. The blender fills the passion share from "
+               "his quests (matched to his interests) and the rest from "
+               "Foundations modules he hasn't done yet.")
+    s = get_blend_settings(student_id)
+    ratio = st.slider("Passion share of the week", 0, 100, s["ratio"], step=10,
+                      help="The rest is Foundations. 60 means 60% passion / "
+                           "40% foundations.")
+    st.caption(f"→ {ratio}% passion · {100 - ratio}% foundations")
+    target = st.number_input("Weekly project hours to plan for", min_value=1.0,
+                             max_value=30.0, step=1.0, value=float(s["target"]))
+    if st.button("Save mix", type="primary"):
+        set_blend_settings(student_id, ratio, target)
+        st.success("Saved.")
+        st.rerun()
+
+    st.divider()
+    monday = _monday_of(date.today())
+    plan = get_weekly_plan(student_id, monday)
+    if plan.empty:
+        st.info("No plan generated for this week yet.")
+    else:
+        p_h = plan[plan["kind"] == "passion"]["est_hours"].sum()
+        f_h = plan[plan["kind"] == "foundations"]["est_hours"].sum()
+        st.markdown(f"**This week:** {len(plan)} items · "
+                    f"{p_h:g} passion hrs / {f_h:g} foundations hrs")
+        show = plan[["title", "kind", "est_hours", "status"]].rename(columns={
+            "title": "Item", "kind": "Track", "est_hours": "Hrs", "status": "Status"})
+        st.dataframe(show, use_container_width=True, hide_index=True)
+    if st.button("🔄 Generate / rebuild this week"):
+        generate_weekly_plan(student_id, school_year, monday)
+        st.rerun()
 
 
 def render_resources_tab(parent_mode):
@@ -4996,7 +5281,8 @@ with st.sidebar:
             st.session_state.student_view = "Today"
 
         _nav_group("📅 Schedule & Quests", [
-            ("Today", "📅"), ("My Week", "🗓"), ("Calendar", "📆"), ("Passion Track", "🗺️")],
+            ("Today", "📅"), ("My Plan", "🧭"), ("My Week", "🗓"), ("Calendar", "📆"),
+            ("Passion Track", "🗺️")],
             "nav_schedule", "student_view")
         _nav_group("🎯 Learning", [
             ("Foundations", "🧭"), ("Electives & Books", "🎯"), ("Quizzes", "📝"),
@@ -5020,7 +5306,8 @@ with st.sidebar:
             ("Dashboard", "📊"), ("Curriculum", "📚"), ("8th Grade Scope", "📋")],
             "pnav_progress", "parent_view")
         _nav_group("🎯 Content", [
-            ("Passion Track", "🗺️"), ("Foundations", "🧭"), ("Travel Log", "🧳")],
+            ("Plan Blender", "🎛️"), ("Passion Track", "🗺️"), ("Foundations", "🧭"),
+            ("Travel Log", "🧳")],
             "pnav_content", "parent_view")
         _nav_group("🗄️ Records", [
             ("Accounts", "🔑"), ("Assessments", "✅"), ("Export", "⬇️")],
@@ -5554,6 +5841,10 @@ if not parent_mode:
         school_year = student_row["school_year"] or "current"
         render_fun_projects_picker(student_id, school_year, key_prefix="stu")
 
+    elif st.session_state.student_view == "My Plan":
+        school_year = student_row["school_year"] or "current"
+        render_this_week(student_id, school_year, key_prefix="stu")
+
     elif st.session_state.student_view == "Foundations":
         school_year = student_row["school_year"] or "current"
         render_foundations(student_id, school_year, key_prefix="stu")
@@ -5925,6 +6216,11 @@ else:
         render_fun_projects_picker(student_id, school_year, key_prefix="parent")
         st.divider()
         render_fun_project_pool_admin()
+
+    # ---- Plan Blender
+    elif parent_view == "Plan Blender":
+        school_year = student_row["school_year"] or "current"
+        render_plan_blender(student_id, school_year)
 
     # ---- Foundations
     elif parent_view == "Foundations":
