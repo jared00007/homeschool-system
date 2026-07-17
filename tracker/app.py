@@ -730,6 +730,163 @@ SMITHSONIAN_LEARNING_LAB_SEEDS = [
               "researching and telling history yourself."},
 ]
 
+# --- Foundations Track: the hand-curated life-skills / financial-literacy
+# library that is the whole differentiator in Compass_Homeschool_Market_
+# Strategy.docx. Deliberately a fixed, ownable set of ~14 tight modules (not
+# an AI content firehose), each tagged to real WA_SUBJECTS so finishing one
+# attributes compliance hours exactly like a quest. objectives = what he can
+# do afterwards; activities = concrete do-it tasks, one per line. source_url
+# points at a reputable free resource to actually work from. Placeholder
+# starter content — the parent edits/extends it from the Foundations admin.
+FOUNDATIONS_MODULE_SEEDS = [
+    # ---- Financial Literacy ----
+    {"title": "Where Your Money Goes", "pillar": "Financial Literacy",
+     "subjects": "Mathematics, Occupational Education", "est_hours": 1.5,
+     "source_url": "https://consumer.gov/section/managing-your-money",
+     "description": "Build a simple budget and see where money actually leaks out.",
+     "objectives": "Tell the difference between a need and a want, split money "
+                   "with a save/spend/give plan, and track a week of real spending.",
+     "activities": "Track everything you (or the family) spend for 3 days\n"
+                   "Sort each one into needs vs wants\n"
+                   "Build a save/spend/give split for $50\n"
+                   "Find one 'want' you'd cut and say why"},
+    {"title": "How Banking Actually Works", "pillar": "Financial Literacy",
+     "subjects": "Mathematics, Occupational Education", "est_hours": 1.5,
+     "source_url": "https://www.mymoney.gov/",
+     "description": "Checking vs savings, debit vs credit, and what interest really is.",
+     "objectives": "Explain what a bank does with your money, why savings earns "
+                   "interest, and how a debit card differs from a credit card.",
+     "activities": "Explain checking vs savings in your own words\n"
+                   "Calculate a year of interest on $200 at 4%\n"
+                   "List 3 ways a debit card and a credit card differ\n"
+                   "Read a sample bank statement and find the balance"},
+    {"title": "Taxes 101: Why Your Paycheck Shrinks", "pillar": "Financial Literacy",
+     "subjects": "Mathematics, Occupational Education", "est_hours": 1.0,
+     "source_url": "https://apps.irs.gov/app/understandingTaxes/student/index.jsp",
+     "description": "What all those deductions on a paycheck are, in plain terms.",
+     "objectives": "Read a pay stub, explain gross vs net pay, and describe what "
+                   "income tax pays for.",
+     "activities": "Label every line on a sample pay stub\n"
+                   "Work out net pay from a $600 gross check\n"
+                   "Name 3 things taxes pay for that you use\n"
+                   "Explain 'gross vs net' to a parent"},
+    # ---- Digital Literacy ----
+    {"title": "Spotting Fakes: News, Scams & AI", "pillar": "Digital Literacy",
+     "subjects": "Occupational Education, Reading", "est_hours": 1.5,
+     "source_url": "https://www.commonsense.org/education/digital-citizenship",
+     "description": "Tell real from fake online — headlines, scams, and AI images.",
+     "objectives": "Fact-check a claim, spot the signs of a phishing scam, and "
+                   "explain why an AI image can look real but be fake.",
+     "activities": "Fact-check a viral claim using two sources\n"
+                   "Spot 3 red flags in a scam email or DM\n"
+                   "Find the tells in an AI-generated image\n"
+                   "Write your own rule for 'is this legit?'"},
+    {"title": "Your Digital Footprint", "pillar": "Digital Literacy",
+     "subjects": "Occupational Education", "est_hours": 1.0,
+     "source_url": "https://beinternetawesome.withgoogle.com/",
+     "description": "What the internet remembers about you, and how to control it.",
+     "objectives": "Explain what a digital footprint is, adjust a privacy setting, "
+                   "and decide what's safe to post.",
+     "activities": "Search your own name and see what comes up\n"
+                   "Change one privacy setting on an app you use\n"
+                   "Build a strong passphrase you can remember\n"
+                   "List 3 things you'd never post, and why"},
+    # ---- Career Readiness ----
+    {"title": "What Do People Actually Do All Day?", "pillar": "Career Readiness",
+     "subjects": "Occupational Education", "est_hours": 1.0,
+     "source_url": "https://www.bls.gov/ooh/",
+     "description": "Explore real jobs — what they pay, and what they're actually like.",
+     "objectives": "Research a career's day-to-day, pay, and training, and connect "
+                   "it to something you're into.",
+     "activities": "Pick 3 jobs tied to something you like\n"
+                   "Look up pay and training for each\n"
+                   "Interview an adult about their actual workday\n"
+                   "Rank the 3 and say why"},
+    {"title": "Your First Résumé", "pillar": "Career Readiness",
+     "subjects": "Writing, Occupational Education", "est_hours": 1.5,
+     "source_url": "https://www.careeronestop.org/GetMyFuture/Toolkit/toolkit.aspx",
+     "description": "Put together a real one-page résumé, even with no job yet.",
+     "objectives": "Write a résumé that turns projects, chores, and hobbies into "
+                   "real experience.",
+     "activities": "List everything you've done that took skill\n"
+                   "Turn 3 of them into résumé bullet points\n"
+                   "Draft a clean one-page résumé\n"
+                   "Have a parent mark it up"},
+    # ---- Health & Wellness ----
+    {"title": "Fuel & Sleep: Running Your Body", "pillar": "Health & Wellness",
+     "subjects": "Health, Science", "est_hours": 1.0,
+     "source_url": "https://www.myplate.gov/",
+     "description": "How food and sleep actually change how you feel and think.",
+     "objectives": "Read a nutrition label, plan a balanced plate, and explain why "
+                   "sleep affects mood and focus.",
+     "activities": "Read the label on something in the kitchen\n"
+                   "Build a balanced plate for one meal\n"
+                   "Track your sleep for 3 nights\n"
+                   "Note how you felt on the best vs worst night"},
+    {"title": "Handling Stress & Big Feelings", "pillar": "Health & Wellness",
+     "subjects": "Health", "est_hours": 1.0,
+     "source_url": "https://kidshealth.org/en/teens/stress.html",
+     "description": "Practical tools for when things feel like too much.",
+     "objectives": "Name what stress feels like in your body and use two ways to "
+                   "bring it down.",
+     "activities": "List your own early warning signs of stress\n"
+                   "Try a box-breathing round (4-4-4-4)\n"
+                   "Pick two reset moves that work for you\n"
+                   "Make a 'when I'm overwhelmed' plan"},
+    # ---- Life Skills ----
+    {"title": "Cook Three Real Meals", "pillar": "Life Skills",
+     "subjects": "Occupational Education, Health", "est_hours": 2.0,
+     "source_url": "https://www.allrecipes.com/recipes/739/everyday-cooking/quick-and-easy/",
+     "description": "Actually feed yourself — breakfast, lunch, and a dinner.",
+     "objectives": "Follow a recipe, use a knife safely, and cook three meals "
+                   "start to finish with cleanup.",
+     "activities": "Cook a breakfast from scratch\n"
+                   "Make a lunch that isn't from a package\n"
+                   "Cook one dinner for the family\n"
+                   "Clean the kitchen fully after each"},
+    {"title": "Fix-It Basics", "pillar": "Life Skills",
+     "subjects": "Occupational Education", "est_hours": 1.5,
+     "source_url": "https://www.ifixit.com/Guide",
+     "description": "Small repairs so you're not stuck waiting on someone else.",
+     "objectives": "Use basic tools to handle common fixes — a screw, a bike tire, "
+                   "a battery, a clog.",
+     "activities": "Learn what's in the toolbox and what each does\n"
+                   "Tighten or fix something that's loose or broken\n"
+                   "Re-inflate or patch a bike tire\n"
+                   "Fix one thing you'd normally ask an adult to do"},
+    {"title": "Doing Your Own Laundry", "pillar": "Life Skills",
+     "subjects": "Occupational Education", "est_hours": 1.0,
+     "source_url": "https://www.tide.com/en-us/how-to-wash-clothes/how-to-do-laundry",
+     "description": "Wash your own clothes without turning everything pink.",
+     "objectives": "Sort, wash, dry, and fold a load without shrinking or "
+                   "staining anything.",
+     "activities": "Sort a real pile by color and fabric\n"
+                   "Run a full wash + dry cycle yourself\n"
+                   "Fold and put away the whole load\n"
+                   "Learn what one laundry symbol means"},
+    # ---- Civics ----
+    {"title": "How a Law Actually Gets Made", "pillar": "Civics",
+     "subjects": "Social Studies", "est_hours": 1.0,
+     "source_url": "https://www.icivics.org/games",
+     "description": "From idea to law — and where a regular person can push.",
+     "objectives": "Trace a bill from idea to law and name one point where "
+                   "citizens can influence it.",
+     "activities": "Map the steps a bill takes to become law\n"
+                   "Find a real bill in the news right now\n"
+                   "Name who represents your area\n"
+                   "Write what you'd tell them about one issue"},
+    {"title": "Your Rights & Local Government", "pillar": "Civics",
+     "subjects": "Social Studies", "est_hours": 1.0,
+     "source_url": "https://www.usa.gov/local-governments",
+     "description": "What the government near you does, and what rights you have.",
+     "objectives": "Name what local government handles and list a few of your "
+                   "basic rights.",
+     "activities": "List 5 things your city/county actually runs\n"
+                   "Find when the next local meeting is\n"
+                   "Name 3 rights in the Bill of Rights\n"
+                   "Pick one local problem and who to ask about it"},
+]
+
 # Sites the curriculum/electives above actually require a login for.
 # required=True -> always needed, regardless of elective picks.
 # required=False -> only needed if one of "electives" is currently selected
@@ -1668,6 +1825,20 @@ def get_conn():
                  datetime.now().isoformat(timespec="seconds")))
         conn.execute("INSERT INTO settings (key, value) VALUES (?, ?)",
                      ("smithsonian_seeded", "1"))
+    # Foundations Track library: seeded once behind a flag (same reasoning as
+    # the Smithsonian block) so a parent's edits and deletions stick.
+    if not conn.execute("SELECT value FROM settings WHERE key = ?",
+                        ("foundations_seeded",)).fetchone():
+        for i, m in enumerate(FOUNDATIONS_MODULE_SEEDS):
+            conn.execute("""INSERT INTO foundations_modules
+                (title, pillar, description, objectives, activities, subjects,
+                 est_hours, source_url, sort_order, active)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+                (m["title"], m["pillar"], m["description"], m["objectives"],
+                 m["activities"], m["subjects"], m["est_hours"],
+                 m["source_url"], i))
+        conn.execute("INSERT INTO settings (key, value) VALUES (?, ?)",
+                     ("foundations_seeded", "1"))
     if conn.execute("SELECT COUNT(*) FROM national_parks").fetchone()[0] == 0:
         for name, state, lat, lon, region in DEFAULT_NATIONAL_PARKS:
             conn.execute("""INSERT INTO national_parks (name, state, lat, lon, region)
@@ -2357,6 +2528,114 @@ def finish_fun_project(project_id, student_id, title, subjects_str, est_hours):
 
 def delete_student_fun_project(project_id):
     conn.execute("DELETE FROM student_fun_projects WHERE id = ?", (project_id,))
+    conn.commit()
+
+
+# ----- Foundations Track -----
+def get_foundations_modules_df(active_only=True):
+    q = "SELECT * FROM foundations_modules"
+    if active_only:
+        q += " WHERE active = 1"
+    q += " ORDER BY sort_order, pillar, title"
+    return pd.read_sql(q, conn)
+
+
+def add_foundations_module(title, pillar, description, objectives, activities,
+                            subjects, est_hours, source_url):
+    try:
+        est_hours = float(est_hours)
+    except (TypeError, ValueError):
+        est_hours = 1.0
+    nxt = conn.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 "
+                       "FROM foundations_modules").fetchone()[0]
+    conn.execute("""INSERT INTO foundations_modules
+        (title, pillar, description, objectives, activities, subjects, est_hours,
+         source_url, sort_order, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+        (title, pillar, description, objectives, activities, subjects, est_hours,
+         source_url, nxt))
+    conn.commit()
+
+
+def update_foundations_module(module_id, title, pillar, description, objectives,
+                               activities, subjects, est_hours, source_url):
+    try:
+        est_hours = float(est_hours)
+    except (TypeError, ValueError):
+        est_hours = 1.0
+    conn.execute("""UPDATE foundations_modules SET title = ?, pillar = ?,
+        description = ?, objectives = ?, activities = ?, subjects = ?,
+        est_hours = ?, source_url = ? WHERE id = ?""",
+        (title, pillar, description, objectives, activities, subjects, est_hours,
+         source_url, module_id))
+    conn.commit()
+
+
+def delete_foundations_module(module_id):
+    """Hard-delete the module plus any student progress rows pointing at it —
+    no ON DELETE CASCADE in this schema, so clean up here."""
+    conn.execute("DELETE FROM student_foundations_progress WHERE module_id = ?",
+                (module_id,))
+    conn.execute("DELETE FROM foundations_modules WHERE id = ?", (module_id,))
+    conn.commit()
+
+
+def get_student_foundations(student_id):
+    """Every module joined to this student's progress (status/completed_at).
+    Modules with no progress row yet come back with NULLs."""
+    return pd.read_sql("""SELECT m.*, p.status AS prog_status,
+        p.completed_at, p.hours_logged
+        FROM foundations_modules m
+        LEFT JOIN student_foundations_progress p
+          ON p.module_id = m.id AND p.student_id = ?
+        WHERE m.active = 1
+        ORDER BY m.sort_order, m.pillar, m.title""", conn, params=[student_id])
+
+
+def complete_foundations_module(module_id, student_id, title, subjects_str,
+                                 est_hours):
+    """Mark a Foundations module complete and — once, idempotently — split
+    est_hours across its tagged WA subjects into pending log_entries, exactly
+    like finish_fun_project does for a quest."""
+    row = conn.execute("""SELECT hours_logged FROM student_foundations_progress
+        WHERE student_id = ? AND module_id = ?""",
+        (student_id, module_id)).fetchone()
+    already_logged = bool(row and row[0])
+    completed_at = datetime.now().isoformat(timespec="seconds")
+    if row:
+        conn.execute("""UPDATE student_foundations_progress
+            SET status = 'complete', completed_at = ?
+            WHERE student_id = ? AND module_id = ?""",
+            (completed_at, student_id, module_id))
+    else:
+        conn.execute("""INSERT INTO student_foundations_progress
+            (student_id, module_id, status, completed_at, hours_logged)
+            VALUES (?, ?, 'complete', ?, 0)""",
+            (student_id, module_id, completed_at))
+    if not already_logged:
+        valid = [s.strip() for s in (subjects_str or "").split(",")
+                if s.strip() in WA_SUBJECTS + ["Electives"]]
+        if not valid:
+            valid = ["Occupational Education"]
+        try:
+            est_hours = float(est_hours)
+        except (TypeError, ValueError):
+            est_hours = 1.0
+        per_subject = round(est_hours / len(valid), 2)
+        for subj in valid:
+            add_entry(student_id, date.today(), subj, per_subject,
+                     f"Foundations: {title}", "Instruction", "pending",
+                     struggled=False, block_start=None)
+        conn.execute("""UPDATE student_foundations_progress SET hours_logged = 1
+            WHERE student_id = ? AND module_id = ?""", (student_id, module_id))
+    conn.commit()
+
+
+def reopen_foundations_module(module_id, student_id):
+    """Undo a completion (leaves any already-logged hours in place — those are
+    the parent's to reject in Review & Approve, same as an un-finished quest)."""
+    conn.execute("""UPDATE student_foundations_progress
+        SET status = 'in_progress', completed_at = NULL
+        WHERE student_id = ? AND module_id = ?""", (student_id, module_id))
     conn.commit()
 
 
@@ -3182,6 +3461,158 @@ def render_fun_project_pool_admin():
         expander_label_fn=lambda row: f"{row['title']} "
                                       f"({row['subjects'] or row['subject']}) · "
                                       f"{row['mess_level'] or 'Low'} mess")
+
+
+# Emoji per Foundations pillar — keeps the library scannable and on-brand.
+FOUNDATIONS_PILLAR_ICON = {
+    "Financial Literacy": "💰", "Digital Literacy": "🌐",
+    "Career Readiness": "🧭", "Health & Wellness": "🫀",
+    "Life Skills": "🛠️", "Civics": "🏛️",
+}
+
+
+def render_foundations(student_id, school_year, key_prefix):
+    """Student-facing Foundations Track: the mandatory life-skills half of
+    Compass. Browse modules by pillar, open one, do the activities, mark it
+    complete → logs pending hours like a quest. Styled as cards, not a list."""
+    st.subheader("🧭 Foundations")
+    st.caption("The real-world stuff school skips — money, cooking, digital "
+               "smarts, your rights. Finish one and the hours go to a parent, "
+               "same as a quest.")
+    st.markdown(QUEST_CARD_CSS, unsafe_allow_html=True)
+
+    df = get_student_foundations(student_id)
+    if df.empty:
+        st.info("No Foundations modules yet — a parent can add them in "
+                "Parent Console → 🧭 Foundations.")
+        return
+
+    done_mask = df["prog_status"] == "complete"
+    done_ct = int(done_mask.sum())
+    total = len(df)
+    st.progress(done_ct / total,
+                text=f"🏅 {done_ct} / {total} Foundations badges earned")
+
+    for pillar in [p for p in FOUNDATIONS_PILLARS if p in set(df["pillar"])]:
+        chunk = df[df["pillar"] == pillar]
+        icon = FOUNDATIONS_PILLAR_ICON.get(pillar, "•")
+        pdone = int((chunk["prog_status"] == "complete").sum())
+        st.markdown(f"### {icon} {pillar}  ·  {pdone}/{len(chunk)}")
+        for _, m in chunk.iterrows():
+            is_done = m["prog_status"] == "complete"
+            with st.container(border=True):
+                head = f"{'✅' if is_done else '⬜'} **{m['title']}**"
+                st.markdown(head)
+                st.caption(m["description"] or "")
+                with st.expander("What you'll get out of it + how to do it"):
+                    if m["objectives"]:
+                        st.markdown(f"**You'll be able to:** {m['objectives']}")
+                    steps = [s for s in (m["activities"] or "").split("\n") if s.strip()]
+                    if steps:
+                        st.markdown("**Do this:**")
+                        for i, s in enumerate(steps, 1):
+                            st.markdown(f"{i}. {s}")
+                    if m["source_url"]:
+                        st.markdown(f"🔗 [Start here]({m['source_url']})")
+                    tags = ", ".join(t.strip() for t in (m["subjects"] or "").split(",")
+                                     if t.strip())
+                    st.caption(f"Counts toward: {tags} · ~{m['est_hours'] or 1.0:g} hr")
+                if is_done:
+                    when = str(m["completed_at"])[:10] if m["completed_at"] else ""
+                    c1, c2 = st.columns([3, 1])
+                    c1.success(f"Done{f' · {when}' if when else ''}")
+                    if c2.button("Reopen", key=f"{key_prefix}_reopen_{m['id']}",
+                                 use_container_width=True):
+                        reopen_foundations_module(int(m["id"]), student_id)
+                        st.rerun()
+                else:
+                    if st.button("🏅 Mark complete",
+                                 key=f"{key_prefix}_done_{m['id']}", type="primary"):
+                        complete_foundations_module(
+                            int(m["id"]), student_id, m["title"],
+                            m["subjects"], m["est_hours"] or 1.0)
+                        st.success("Nice — sent to your parent for approval.")
+                        st.balloons()
+                        st.rerun()
+
+
+def render_foundations_admin():
+    """Parent-only: manage the Foundations library. Bespoke rather than
+    render_pool_admin because a module needs a pillar selectbox and a
+    multiselect of WA subjects, neither of which that generic helper supports."""
+    st.subheader("🧭 Foundations Library")
+    st.caption("The life-skills/finance modules he works through. Edit freely — "
+               "these seed once, so your changes and deletions stick.")
+
+    df = get_foundations_modules_df(active_only=False)
+
+    def _module_form(row=None):
+        pfx = f"fnd_edit_{row['id']}" if row is not None else "fnd_add"
+        title = st.text_input("Title", value=row["title"] if row is not None else "",
+                              key=f"{pfx}_title")
+        pillar = st.selectbox("Pillar", FOUNDATIONS_PILLARS,
+                              index=FOUNDATIONS_PILLARS.index(row["pillar"])
+                              if row is not None and row["pillar"] in FOUNDATIONS_PILLARS
+                              else 0, key=f"{pfx}_pillar")
+        cur_subj = [s.strip() for s in (row["subjects"] or "").split(",")
+                    if s.strip()] if row is not None else []
+        subjects = st.multiselect("Counts toward (WA subjects)",
+                                  WA_SUBJECTS + ["Electives"], default=cur_subj,
+                                  key=f"{pfx}_subjects")
+        description = st.text_input("One-line description",
+                                    value=row["description"] if row is not None else "",
+                                    key=f"{pfx}_desc")
+        objectives = st.text_area("Objectives (what he'll be able to do)",
+                                  value=row["objectives"] if row is not None else "",
+                                  key=f"{pfx}_obj")
+        activities = st.text_area("Activities (one per line)",
+                                  value=row["activities"] if row is not None else "",
+                                  key=f"{pfx}_act")
+        source_url = st.text_input("Source link",
+                                   value=row["source_url"] if row is not None else "",
+                                   key=f"{pfx}_url")
+        est_hours = st.number_input("Estimated hours", min_value=0.25, step=0.25,
+                                    value=float(row["est_hours"] or 1.0)
+                                    if row is not None else 1.0, key=f"{pfx}_hrs")
+        return (title, pillar, description, objectives, activities,
+                ", ".join(subjects), est_hours, source_url)
+
+    by_pillar = {}
+    for _, r in df.iterrows():
+        by_pillar.setdefault(r["pillar"], []).append(r)
+    for pillar in FOUNDATIONS_PILLARS:
+        rows = by_pillar.get(pillar, [])
+        if not rows:
+            continue
+        st.markdown(f"**{FOUNDATIONS_PILLAR_ICON.get(pillar, '•')} {pillar}**")
+        for row in rows:
+            with st.expander(row["title"]):
+                with st.form(f"fnd_edit_form_{row['id']}"):
+                    vals = _module_form(row)
+                    c1, c2 = st.columns(2)
+                    save = c1.form_submit_button("Save changes")
+                    remove = c2.form_submit_button("Delete")
+                if save:
+                    if vals[0].strip():
+                        update_foundations_module(int(row["id"]), *vals)
+                        st.success("Updated.")
+                        st.rerun()
+                    else:
+                        st.warning("Title can't be blank.")
+                if remove:
+                    delete_foundations_module(int(row["id"]))
+                    st.rerun()
+
+    st.markdown("**Add a module**")
+    with st.form("fnd_add_form", clear_on_submit=True):
+        vals = _module_form(None)
+        if st.form_submit_button("Add"):
+            if vals[0].strip():
+                add_foundations_module(*vals)
+                st.success("Added.")
+                st.rerun()
+            else:
+                st.warning("Give it a title.")
 
 
 def render_resources_tab(parent_mode):
@@ -4511,7 +4942,8 @@ with st.sidebar:
             ("Today", "📅"), ("My Week", "🗓"), ("Calendar", "📆"), ("Quest Board", "🗺️")],
             "nav_schedule", "student_view")
         _nav_group("🎯 Learning", [
-            ("Electives & Books", "🎯"), ("Quizzes", "📝"), ("My Grades", "🏆")],
+            ("Foundations", "🧭"), ("Electives & Books", "🎯"), ("Quizzes", "📝"),
+            ("My Grades", "🏆")],
             "nav_learning", "student_view")
         _nav_group("🧳 Extras", [
             ("Travel Log", "🧳"), ("Resources", "📎")],
@@ -4531,7 +4963,7 @@ with st.sidebar:
             ("Dashboard", "📊"), ("Curriculum", "📚"), ("8th Grade Scope", "📋")],
             "pnav_progress", "parent_view")
         _nav_group("🎯 Content", [
-            ("Quest Board", "🗺️"), ("Travel Log", "🧳")],
+            ("Quest Board", "🗺️"), ("Foundations", "🧭"), ("Travel Log", "🧳")],
             "pnav_content", "parent_view")
         _nav_group("🗄️ Records", [
             ("Accounts", "🔑"), ("Assessments", "✅"), ("Export", "⬇️")],
@@ -5065,6 +5497,10 @@ if not parent_mode:
         school_year = student_row["school_year"] or "current"
         render_fun_projects_picker(student_id, school_year, key_prefix="stu")
 
+    elif st.session_state.student_view == "Foundations":
+        school_year = student_row["school_year"] or "current"
+        render_foundations(student_id, school_year, key_prefix="stu")
+
     elif st.session_state.student_view == "Travel Log":
         school_year = student_row["school_year"] or "current"
         render_travel_log(student_id, school_year, key_prefix="stu")
@@ -5432,6 +5868,13 @@ else:
         render_fun_projects_picker(student_id, school_year, key_prefix="parent")
         st.divider()
         render_fun_project_pool_admin()
+
+    # ---- Foundations
+    elif parent_view == "Foundations":
+        school_year = student_row["school_year"] or "current"
+        render_foundations(student_id, school_year, key_prefix="parentfnd")
+        st.divider()
+        render_foundations_admin()
 
     # ---- Travel Log
     elif parent_view == "Travel Log":
