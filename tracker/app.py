@@ -4805,11 +4805,21 @@ def render_travel_log(student_id, school_year, key_prefix):
         lookup_name = st.selectbox("Park", list(parks_df["name"]),
                                    key=f"{key_prefix}_park_lookup")
         lookup_row = parks_df[parks_df["name"] == lookup_name].iloc[0]
+        # Per-park booklet PDFs aren't published at stable URLs across the whole
+        # park system, so unless a parent has pasted a specific booklet_url for
+        # this park, fall back to a search that lands the actual booklet — that
+        # always works, where a blank "none on file" was a dead end.
         if lookup_row["booklet_url"]:
             st.link_button(f"📄 Open {lookup_name}'s Junior Ranger booklet",
                            lookup_row["booklet_url"])
         else:
-            st.caption("No booklet link on file for this park.")
+            import urllib.parse as _up
+            q = _up.quote(f"{lookup_name} National Park Junior Ranger booklet pdf")
+            st.link_button(f"🔎 Find {lookup_name}'s Junior Ranger booklet",
+                           f"https://www.google.com/search?q={q}")
+            st.caption("No exact PDF on file — this search lands the park's "
+                       "booklet. A parent can paste the direct link in Parent "
+                       "→ Travel Log if they find it.")
 
     st.divider()
     render_travel_entry_form(student_id, school_year, key_prefix)
@@ -5399,14 +5409,19 @@ def render_health_habits_checkin(student_id):
                        f"{streak} day{'s' if streak != 1 else ''} running.")
 
         with st.expander("📓 Journal (optional)"):
-            journal_text = st.text_area(
-                "Journal", value=h["journal"],
-                key=f"health_journal_{today.isoformat()}",
-                label_visibility="collapsed",
-                placeholder="Anything on your mind. Nobody reads this but you "
-                            "and your parent.", height=100)
-            if journal_text != h["journal"]:
-                set_health_journal(student_id, today, journal_text)
+            # A form so the journal doesn't save-and-rerun on every keystroke —
+            # the student types the whole thing, then hits Save once.
+            with st.form(f"journal_form_{today.isoformat()}"):
+                journal_text = st.text_area(
+                    "Journal", value=h["journal"],
+                    label_visibility="collapsed",
+                    placeholder="Anything on your mind. Nobody reads this but "
+                                "you and your parent.", height=120)
+                if st.form_submit_button("💾 Save journal", type="primary"):
+                    set_health_journal(student_id, today, journal_text)
+                    st.success("Saved.")
+            if h["journal"]:
+                st.caption("✓ Saved earlier today. Edit above and Save to update.")
     return is_done
 
 
@@ -5668,18 +5683,28 @@ def render_day1_checklist(student_id, school_year):
             st.caption(f"{len(books)} book(s) on your list." if books_done
                       else "Add one in the 🎯 Electives & Books tab.")
 
-    # --- Manual orientation items
+    # --- Manual orientation items. Rendered like every other checklist row:
+    # a ⬜/✅ header + a "Mark done" button (green ✅ once done), instead of a
+    # bare checkbox, so they match the rest of the list.
     for item in DAY1_MANUAL_ITEMS:
         checked = get_checklist_item(school_year, item["key"])
         total_items += 1
         done_items += int(checked)
         with st.container(border=True):
-            new_val = st.checkbox(item["label"], value=checked,
-                                  key=f"{item['key']}_{school_year}")
+            st.markdown(f"{'✅' if checked else '⬜'} **{item['label']}**")
             st.caption(item["help"])
-            if new_val != checked:
-                set_checklist_item(school_year, item["key"], new_val)
-                st.rerun()
+            if checked:
+                c1, c2 = st.columns([3, 1])
+                c1.success("Done")
+                if c2.button("Undo", key=f"{item['key']}_undo_{school_year}",
+                             use_container_width=True):
+                    set_checklist_item(school_year, item["key"], False)
+                    st.rerun()
+            else:
+                if st.button("Mark done", key=f"{item['key']}_done_{school_year}",
+                             type="primary"):
+                    set_checklist_item(school_year, item["key"], True)
+                    st.rerun()
 
     st.divider()
     st.progress(done_items / total_items, text=f"{done_items} / {total_items} ready to go")
