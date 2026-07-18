@@ -1167,7 +1167,10 @@ ACCOUNT_SERVICES = {
 # Manual items on the parent launch checklist — things the app can't verify itself.
 MANUAL_CHECKLIST_ITEMS = [
     {"key": "doi_filed", "label": "Declaration of Intent filed with the district",
-     "help": "WA requirement — due Sept 15, or within 2 weeks of a mid-year start."},
+     "help": "WA requirement — due Sept 15, or within 2 weeks of a mid-year "
+             "start. District form: https://resources.finalsite.net/images/"
+             "v1696365301/sumnersdorg/kgjvbarlc1brfmfxlmdw/"
+             "HomeschoolRegistrationPacketGrK-12.pdf"},
     {"key": "curriculum_reviewed", "label": "Curriculum & resource links reviewed",
      "help": "Skim the links in each subject block on the My Week tab — swap out "
              "anything that doesn't fit."},
@@ -1925,10 +1928,12 @@ def get_conn():
     conn.execute("""CREATE TABLE IF NOT EXISTS student_foundations_progress (
         id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
         module_id INTEGER NOT NULL, status TEXT DEFAULT 'assigned',
-        completed_at TEXT, hours_logged INTEGER DEFAULT 0,
+        completed_at TEXT, hours_logged INTEGER DEFAULT 0, notes TEXT,
         UNIQUE(student_id, module_id),
         FOREIGN KEY (student_id) REFERENCES students (id),
         FOREIGN KEY (module_id) REFERENCES foundations_modules (id))""")
+    if "notes" not in table_columns(conn, "student_foundations_progress"):
+        conn.execute("ALTER TABLE student_foundations_progress ADD COLUMN notes TEXT")
     # NB: "values" is a reserved SQL keyword — the column is core_values.
     conn.execute("""CREATE TABLE IF NOT EXISTS passion_profile (
         id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL UNIQUE,
@@ -2665,7 +2670,11 @@ def update_fun_project_status(project_id, status):
 
 
 def parse_steps(steps_text):
-    return [s.strip() for s in (steps_text or "").split("\n") if s.strip()]
+    # NaN-safe: quests seeded without steps come back as a pandas NULL (a
+    # float), and `NaN or ""` is NaN (truthy), which rendered as literal "NaN".
+    if steps_text is None or (isinstance(steps_text, float) and pd.isna(steps_text)):
+        return []
+    return [s.strip() for s in str(steps_text).split("\n") if s.strip()]
 
 
 def mess_badge(mess_level):
@@ -2794,20 +2803,25 @@ def render_block_card(subject, start=None, end=None, status=None, struggled=Fals
     """, unsafe_allow_html=True)
 
 
-def finish_fun_project(project_id, student_id, title, subjects_str, est_hours):
+def finish_fun_project(project_id, student_id, title, subjects_str, est_hours,
+                        note=None):
     """Marks a student_fun_projects row finished and — once, idempotently —
     splits est_hours evenly across its valid tagged WA subjects into pending
     log_entries rows for parent approval, same as any schedule-block entry.
     Falls back to "Occupational Education" if every tag is invalid (e.g. a
-    typo), so hours are never silently dropped from the compliance total."""
+    typo), so hours are never silently dropped from the compliance total.
+
+    `note` is the student's "what did you do?" — stored on the quest and
+    folded into the log entry as proof of work the parent reviews."""
     row = conn.execute("SELECT hours_logged FROM student_fun_projects WHERE id = ?",
                        (project_id,)).fetchone()
     already_logged = bool(row and row[0])
     finished = date.today().isoformat()
     finished_at = datetime.now().isoformat(timespec="seconds")
+    note = (note or "").strip()
     conn.execute("""UPDATE student_fun_projects
-        SET status = 'finished', finished_date = ?, finished_at = ? WHERE id = ?""",
-        (finished, finished_at, project_id))
+        SET status = 'finished', finished_date = ?, finished_at = ?, notes = ?
+        WHERE id = ?""", (finished, finished_at, note or None, project_id))
     if not already_logged:
         valid = [s.strip() for s in (subjects_str or "").split(",")
                 if s.strip() in WA_SUBJECTS + ["Electives"]]
@@ -2818,9 +2832,12 @@ def finish_fun_project(project_id, student_id, title, subjects_str, est_hours):
         except (TypeError, ValueError):
             est_hours = 1.0
         per_subject = round(est_hours / len(valid), 2)
+        desc = f"Finished fun project: {title}"
+        if note:
+            desc += f" — {note}"
         for subj in valid:
             add_entry(student_id, date.today(), subj, per_subject,
-                     f"Finished fun project: {title}", "Instruction", "pending",
+                     desc, "Instruction", "pending",
                      struggled=False, block_start=None)
         conn.execute("UPDATE student_fun_projects SET hours_logged = 1 WHERE id = ?",
                     (project_id,))
@@ -2893,25 +2910,27 @@ def get_student_foundations(student_id):
 
 
 def complete_foundations_module(module_id, student_id, title, subjects_str,
-                                 est_hours):
+                                 est_hours, note=None):
     """Mark a Foundations module complete and — once, idempotently — split
     est_hours across its tagged WA subjects into pending log_entries, exactly
-    like finish_fun_project does for a quest."""
+    like finish_fun_project does for a quest. `note` is the student's proof of
+    work, stored and folded into the log entry the parent reviews."""
     row = conn.execute("""SELECT hours_logged FROM student_foundations_progress
         WHERE student_id = ? AND module_id = ?""",
         (student_id, module_id)).fetchone()
     already_logged = bool(row and row[0])
     completed_at = datetime.now().isoformat(timespec="seconds")
+    note = (note or "").strip()
     if row:
         conn.execute("""UPDATE student_foundations_progress
-            SET status = 'complete', completed_at = ?
+            SET status = 'complete', completed_at = ?, notes = ?
             WHERE student_id = ? AND module_id = ?""",
-            (completed_at, student_id, module_id))
+            (completed_at, note or None, student_id, module_id))
     else:
         conn.execute("""INSERT INTO student_foundations_progress
-            (student_id, module_id, status, completed_at, hours_logged)
-            VALUES (?, ?, 'complete', ?, 0)""",
-            (student_id, module_id, completed_at))
+            (student_id, module_id, status, completed_at, hours_logged, notes)
+            VALUES (?, ?, 'complete', ?, 0, ?)""",
+            (student_id, module_id, completed_at, note or None))
     if not already_logged:
         valid = [s.strip() for s in (subjects_str or "").split(",")
                 if s.strip() in WA_SUBJECTS + ["Electives"]]
@@ -2922,9 +2941,12 @@ def complete_foundations_module(module_id, student_id, title, subjects_str,
         except (TypeError, ValueError):
             est_hours = 1.0
         per_subject = round(est_hours / len(valid), 2)
+        desc = f"Foundations: {title}"
+        if note:
+            desc += f" — {note}"
         for subj in valid:
             add_entry(student_id, date.today(), subj, per_subject,
-                     f"Foundations: {title}", "Instruction", "pending",
+                     desc, "Instruction", "pending",
                      struggled=False, block_start=None)
         conn.execute("""UPDATE student_foundations_progress SET hours_logged = 1
             WHERE student_id = ? AND module_id = ?""", (student_id, module_id))
@@ -3887,13 +3909,23 @@ def render_fun_projects_picker(student_id, school_year, key_prefix):
                     with st.expander("📋 Steps"):
                         for i, s in enumerate(steps, 1):
                             st.markdown(f"{i}. {s}")
+                quest_note = st.text_area(
+                    "What did you actually do? (this is your proof of work)",
+                    key=f"{key_prefix}_proj_note_{p['id']}", height=80,
+                    placeholder="e.g. built the level, wrote the script, "
+                                "recorded the video…")
                 bc1, bc2, bc3 = st.columns(3)
                 if bc1.button("🏆 Complete", key=f"{key_prefix}_proj_finish_{p['id']}",
                              type="primary", use_container_width=True):
-                    finish_fun_project(int(p["id"]), student_id, p["title"],
-                                      p["subjects"] or p["subject"], p["est_hours"] or 1.0)
-                    st.success("Quest complete! Sent to your parent for approval.")
-                    st.rerun()
+                    if not quest_note.strip():
+                        st.warning("Add a line about what you did first — that's "
+                                   "the proof this counts.")
+                    else:
+                        finish_fun_project(int(p["id"]), student_id, p["title"],
+                                          p["subjects"] or p["subject"],
+                                          p["est_hours"] or 1.0, note=quest_note)
+                        st.success("Quest complete! Sent to your parent for approval.")
+                        st.rerun()
                 if bc2.button("⏸️ Pause", key=f"{key_prefix}_proj_pause_{p['id']}",
                              use_container_width=True):
                     update_fun_project_status(int(p["id"]), "planned")
@@ -4085,14 +4117,23 @@ def render_foundations(student_id, school_year, key_prefix):
                         reopen_foundations_module(int(m["id"]), student_id)
                         st.rerun()
                 else:
+                    f_note = st.text_area(
+                        "What did you do to finish this? (your proof of work)",
+                        key=f"{key_prefix}_fnote_{m['id']}", height=80,
+                        placeholder="e.g. made a budget, cooked the meal, "
+                                    "opened the account…")
                     if st.button("🏅 Mark complete",
                                  key=f"{key_prefix}_done_{m['id']}", type="primary"):
-                        complete_foundations_module(
-                            int(m["id"]), student_id, m["title"],
-                            m["subjects"], m["est_hours"] or 1.0)
-                        st.success("Nice — sent to your parent for approval.")
-                        st.balloons()
-                        st.rerun()
+                        if not f_note.strip():
+                            st.warning("Add a line about what you did first — "
+                                       "that's the proof this counts.")
+                        else:
+                            complete_foundations_module(
+                                int(m["id"]), student_id, m["title"],
+                                m["subjects"], m["est_hours"] or 1.0, note=f_note)
+                            st.success("Nice — sent to your parent for approval.")
+                            st.balloons()
+                            st.rerun()
 
 
 def render_foundations_admin():
@@ -4268,22 +4309,30 @@ def render_plan_blender(student_id, school_year):
     """Parent-only: set the passion/foundations ratio + weekly hours, and
     (re)generate his blended week."""
     st.subheader("🎛️ Plan Blender")
-    st.caption("How his week is mixed. The blender fills the passion share from "
-               "his quests (matched to his interests) and the rest from "
-               "Foundations modules he hasn't done yet.")
+    st.caption("Auto-builds his week as a mix of two tracks: **Passion** "
+               "(quests matched to his interests) and **Foundations** "
+               "(life-skills / financial-literacy modules he hasn't done yet). "
+               "You control the ratio.")
+    st.info("**How to use it:**  1) Set the mix + weekly hours below.  "
+            "2) Click **Save mix**.  3) Click **Generate / rebuild this week** "
+            "to build (or refresh) the plan. Items he's already completed this "
+            "week are kept; only the unfinished ones get rebuilt.")
     s = get_blend_settings(student_id)
+    st.markdown("**Step 1 — set the mix**")
     ratio = st.slider("Passion share of the week", 0, 100, s["ratio"], step=10,
                       help="The rest is Foundations. 60 means 60% passion / "
                            "40% foundations.")
     st.caption(f"→ {ratio}% passion · {100 - ratio}% foundations")
     target = st.number_input("Weekly project hours to plan for", min_value=1.0,
                              max_value=30.0, step=1.0, value=float(s["target"]))
-    if st.button("Save mix", type="primary"):
+    st.markdown("**Step 2 — save it**")
+    if st.button("💾 Save mix", type="primary"):
         set_blend_settings(student_id, ratio, target)
-        st.success("Saved.")
+        st.success("Saved. Now hit Generate below to build the week.")
         st.rerun()
 
     st.divider()
+    st.markdown("**Step 3 — build the week**")
     monday = _monday_of(date.today())
     plan = get_weekly_plan(student_id, monday)
     if plan.empty:
@@ -4296,9 +4345,11 @@ def render_plan_blender(student_id, school_year):
         show = plan[["title", "kind", "est_hours", "status"]].rename(columns={
             "title": "Item", "kind": "Track", "est_hours": "Hrs", "status": "Status"})
         st.dataframe(show, use_container_width=True, hide_index=True)
-    if st.button("🔄 Generate / rebuild this week"):
+    if st.button("🔄 Generate / rebuild this week", type="primary"):
         generate_weekly_plan(student_id, school_year, monday)
+        st.success("Week rebuilt from your saved mix.")
         st.rerun()
+    st.caption("He sees the result on his 🧭 My Plan tab.")
 
 
 def build_esa_packet_html(student_id, student_row, school_year):
@@ -6478,8 +6529,12 @@ else:
         {"error": st.error, "warning": st.warning, "info": st.info}[doi_level](doi_msg)
         with st.expander("📋 Steps & letter template"):
             st.markdown(
-                "1. Check your district's site first — many post their own form.\n"
-                "2. No district form? The letter below satisfies the legal requirement.\n"
+                "1. **Your district's form:** [Homeschool Registration Packet "
+                "(Gr K–12)](https://resources.finalsite.net/images/v1696365301/"
+                "sumnersdorg/kgjvbarlc1brfmfxlmdw/HomeschoolRegistrationPacketGrK-12.pdf)"
+                " — fill this out for your district.\n"
+                "2. No district form fits? The letter below satisfies the legal "
+                "requirement on its own.\n"
                 "3. Email is fine for most WA districts — confirm with yours.\n"
                 "4. Keep a copy/confirmation in your records.\n"
                 "5. This is filed every school year, not once.")
