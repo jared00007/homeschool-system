@@ -1814,7 +1814,13 @@ INTEREST_OPTIONS = [
 
 
 # ------------------------------------------------------------- database
+@st.cache_resource(show_spinner=False)
 def get_conn():
+    # Cached for the whole process: Streamlit re-runs this module top-to-bottom
+    # on every interaction, so WITHOUT this decorator a brand-new SQLAlchemy
+    # engine + pool (and a fresh Postgres connection) was created on every
+    # click, accumulating connections against the database's limit. One pool,
+    # created once, shared across all reruns and sessions, is the correct shape.
     conn = connect_database(DB_PATH)
     print(f"Connected database backend: {conn.backend}")
     conn.execute("""CREATE TABLE IF NOT EXISTS students (
@@ -2726,7 +2732,7 @@ def add_travel_entry(student_id, school_year, entry_date, title, content,
          tag_state, tag_park_id, tag_city_id, badge_earned, submitted_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (student_id, school_year, entry_date.isoformat(), title, content,
-         photo_path, tag_state, tag_park_id, tag_city_id, int(badge_earned),
+         photo_path, tag_state, tag_park_id, tag_city_id, int(bool(badge_earned)),
          datetime.now().isoformat(timespec="seconds")))
     conn.commit()
 
@@ -5964,7 +5970,12 @@ with st.sidebar:
     #    takes precedence so each household can set its own without a redeploy.
     #    No passcode configured either way = Student-only, the safe default.
     client_ip = st.context.ip_address
-    is_local = client_ip in (None, "127.0.0.1", "::1", "localhost")
+    # Only trust the "local" shortcut on the local SQLite backend. On a hosted
+    # deployment (Postgres = a real server, never the family Mac) ip_address is
+    # unreliable behind the platform's proxy — it can come back None/loopback
+    # and would wrongly hand the kid an unlocked Parent toggle with no passcode.
+    # There, always fall through to the passcode gate.
+    is_local = (DB_BACKEND is None) and client_ip in (None, "127.0.0.1", "::1", "localhost")
     force_student = st.query_params.get("view") == "student"
     parent_passcode = setting_get("parent_passcode") or os.getenv("PARENT_PASSCODE")
 
