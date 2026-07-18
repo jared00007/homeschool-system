@@ -1752,7 +1752,10 @@ QUIZ_SEC_PER_QUESTION = 30  # minimum expected seconds per question
 
 
 def format_elapsed(seconds):
-    seconds = int(seconds)
+    try:
+        seconds = int(seconds)
+    except (TypeError, ValueError):
+        return "—"
     if seconds < 60:
         return f"{seconds}s"
     return f"{seconds // 60}m {seconds % 60}s"
@@ -6712,7 +6715,7 @@ if not parent_mode:
                     del st.session_state.quiz_start_times[quiz_key]
                     st.rerun()
         else:
-            pct = 100 * result["correct"] / result["total"]
+            pct = (100 * result["correct"] / result["total"]) if result["total"] else 0
             st.success(f"Scored {result['correct']}/{result['total']} ({pct:.0f}%, "
                        f"{letter_grade(pct)}) — saved to your Grades.")
             st.caption(f"Completed in {format_elapsed(result['elapsed'])}.")
