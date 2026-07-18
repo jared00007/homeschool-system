@@ -1875,6 +1875,15 @@ def get_conn():
         id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL,
         subject TEXT, kind TEXT NOT NULL, file_path TEXT, url TEXT,
         notes TEXT, created_at TEXT)""")
+    # Uploaded photos/documents live IN the database (base64 in a TEXT column,
+    # so it works on both SQLite and Postgres) rather than on the container's
+    # disk, which Render wipes on every redeploy/sleep — proof-of-work photos
+    # have to survive. file_key is a client-generated id referenced elsewhere
+    # as "db:<file_key>". Images are downscaled + JPEG-compressed on the way in
+    # (see store_uploaded_file) to keep this small.
+    conn.execute("""CREATE TABLE IF NOT EXISTS stored_files (
+        file_key TEXT PRIMARY KEY, mime TEXT, filename TEXT, data TEXT,
+        created_at TEXT)""")
     conn.execute("""CREATE TABLE IF NOT EXISTS health_habits (
         id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
         log_date TEXT NOT NULL, exercise INTEGER DEFAULT 0,
@@ -2265,9 +2274,7 @@ def delete_assignment(assign_id):
     row = conn.execute("SELECT photo_path FROM assignments WHERE id = ?",
                        (assign_id,)).fetchone()
     if row and row[0]:
-        photo_full_path = Path(__file__).parent / row[0]
-        if photo_full_path.exists():
-            photo_full_path.unlink()
+        delete_stored_file(row[0])
     conn.execute("DELETE FROM assignments WHERE id = ?", (assign_id,))
     conn.commit()
 
@@ -2493,15 +2500,82 @@ def delete_fun_project_pool_option(option_id):
     conn.commit()
 
 
+def store_uploaded_file(uploaded_file):
+    """Store an st.file_uploader result IN the database (base64) so it survives
+    redeploys, and return a 'db:<file_key>' reference. Images are downscaled to
+    max 1400px and JPEG-compressed (~150-300 KB) so photos don't blow the DB;
+    other files (PDFs, docs) are stored as-is."""
+    import base64
+    import io
+    raw = uploaded_file.getvalue()
+    mime = uploaded_file.type or "application/octet-stream"
+    name = uploaded_file.name
+    if mime.startswith("image"):
+        try:
+            from PIL import Image
+            img = Image.open(io.BytesIO(raw))
+            if img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+            img.thumbnail((1400, 1400))
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=78, optimize=True)
+            raw = buf.getvalue()
+            mime = "image/jpeg"
+            name = (Path(name).stem or "photo") + ".jpg"
+        except Exception:
+            pass  # unreadable image — store the original bytes as a fallback
+    key = f"{int(time.time() * 1000)}-{random.randint(1000, 9999)}"
+    conn.execute("""INSERT INTO stored_files (file_key, mime, filename, data, created_at)
+        VALUES (?, ?, ?, ?, ?)""",
+        (key, mime, name, base64.b64encode(raw).decode("ascii"),
+         datetime.now().isoformat(timespec="seconds")))
+    conn.commit()
+    return f"db:{key}"
+
+
+def load_stored_file(ref):
+    """(bytes, mime, filename) for a 'db:<key>' reference, or None. Legacy
+    on-disk paths return None so callers can fall back to reading the file."""
+    ref = cell(ref)
+    if not ref.startswith("db:"):
+        return None
+    row = conn.execute(
+        "SELECT data, mime, filename FROM stored_files WHERE file_key = ?",
+        (ref[3:],)).fetchone()
+    if not row or not row[0]:
+        return None
+    import base64
+    return base64.b64decode(row[0]), row[1], row[2] or "file"
+
+
+def show_stored_photo(ref, width=300):
+    """Display a photo stored in the DB ('db:<key>') or, for older entries,
+    on disk. Does nothing if there's no photo."""
+    ref = cell(ref)
+    if not ref:
+        return
+    loaded = load_stored_file(ref)
+    if loaded:
+        st.image(loaded[0], width=width)
+    else:
+        p = Path(__file__).parent / ref
+        if p.exists():
+            st.image(str(p), width=width)
+
+
+def delete_stored_file(ref):
+    """Remove a stored file, whether it's in the DB or a legacy disk path."""
+    ref = cell(ref)
+    if ref.startswith("db:"):
+        conn.execute("DELETE FROM stored_files WHERE file_key = ?", (ref[3:],))
+        conn.commit()
+    elif ref:
+        (Path(__file__).parent / ref).unlink(missing_ok=True)
+
+
+# Back-compat aliases: both upload paths now store in the DB.
 def save_uploaded_curriculum_file(uploaded_file):
-    """Write an st.file_uploader result to uploads/curriculum, return its
-    path relative to the app folder (what gets stored in the DB)."""
-    target_dir = UPLOADS_BASE / "curriculum"
-    target_dir.mkdir(parents=True, exist_ok=True)
-    ext = Path(uploaded_file.name).suffix or ".dat"
-    fname = f"{int(time.time() * 1000)}{ext}"
-    (target_dir / fname).write_bytes(uploaded_file.getvalue())
-    return str(Path("uploads") / "curriculum" / fname)
+    return store_uploaded_file(uploaded_file)
 
 
 def get_curriculum_materials():
@@ -2518,6 +2592,10 @@ def add_curriculum_material(title, subject, kind, file_path, url, notes):
 
 
 def delete_curriculum_material(material_id):
+    row = conn.execute("SELECT file_path FROM curriculum_materials WHERE id = ?",
+                       (material_id,)).fetchone()
+    if row and row[0]:
+        delete_stored_file(row[0])
     conn.execute("DELETE FROM curriculum_materials WHERE id = ?", (material_id,))
     conn.commit()
 
@@ -2572,14 +2650,10 @@ def delete_major_city(city_id):
 
 
 def save_uploaded_photo(uploaded_file, student_id, subdir="journal"):
-    """Write an st.file_uploader result to disk, return its path relative to
-    the app folder (what gets stored in the DB)."""
-    target_dir = UPLOADS_BASE / subdir
-    target_dir.mkdir(parents=True, exist_ok=True)
-    ext = Path(uploaded_file.name).suffix or ".jpg"
-    fname = f"{student_id}_{int(time.time() * 1000)}{ext}"
-    (target_dir / fname).write_bytes(uploaded_file.getvalue())
-    return str(Path("uploads") / subdir / fname)
+    """Store a photo in the DB (compressed) so it survives redeploys, and
+    return a 'db:<key>' reference. subdir/student_id kept for call-site
+    compatibility; storage is grade/subdir-agnostic now."""
+    return store_uploaded_file(uploaded_file)
 
 
 def get_travel_entries(student_id):
@@ -2613,7 +2687,7 @@ def delete_travel_entry(entry_id):
     row = conn.execute("SELECT photo_path FROM travel_entries WHERE id = ?",
                        (entry_id,)).fetchone()
     if row and row[0]:
-        (Path(__file__).parent / row[0]).unlink(missing_ok=True)
+        delete_stored_file(row[0])
     conn.execute("DELETE FROM travel_entries WHERE id = ?", (entry_id,))
     conn.commit()
 
@@ -4588,20 +4662,23 @@ def render_resources_tab(parent_mode):
                     with c1:
                         badge = " 🆕" if not m["seen"] else ""
                         st.markdown(f"**{m['title']}**{badge}")
-                        if m["notes"]:
-                            st.caption(m["notes"])
-                        if m["kind"] == "photo" and m["file_path"]:
-                            full_path = Path(__file__).parent / m["file_path"]
-                            if full_path.exists():
-                                st.image(str(full_path), width=300)
-                        elif m["kind"] == "document" and m["file_path"]:
-                            full_path = Path(__file__).parent / m["file_path"]
-                            if full_path.exists():
+                        if cell(m["notes"]):
+                            st.caption(cell(m["notes"]))
+                        if m["kind"] == "photo" and cell(m["file_path"]):
+                            show_stored_photo(m["file_path"])
+                        elif m["kind"] == "document" and cell(m["file_path"]):
+                            _doc = load_stored_file(m["file_path"])
+                            if _doc:
                                 st.download_button(
-                                    "⬇️ Open document", full_path.read_bytes(),
-                                    file_name=full_path.name,
+                                    "⬇️ Open document", _doc[0], file_name=_doc[2],
                                     key=f"mat_dl_{m['id']}")
-                        elif m["kind"] == "link" and m["url"]:
+                            else:
+                                _dp = Path(__file__).parent / cell(m["file_path"])
+                                if _dp.exists():
+                                    st.download_button(
+                                        "⬇️ Open document", _dp.read_bytes(),
+                                        file_name=_dp.name, key=f"mat_dl_{m['id']}")
+                        elif m["kind"] == "link" and cell(m["url"]):
                             st.link_button("🔗 Open link", m["url"])
                     with c2:
                         if parent_mode:
@@ -4807,10 +4884,7 @@ def render_travel_entries_list(student_id, key_prefix):
                 st.write(cell(e["content"]))
             if cell(e["park_booklet_url"]):
                 st.caption(f"[📄 Junior Ranger booklet]({cell(e['park_booklet_url'])})")
-            if cell(e["photo_path"]):
-                photo_full_path = Path(__file__).parent / cell(e["photo_path"])
-                if photo_full_path.exists():
-                    st.image(str(photo_full_path), width=300)
+            show_stored_photo(e["photo_path"])
             if st.button("Remove", key=f"{key_prefix}_travel_entry_del_{e['id']}"):
                 delete_travel_entry(int(e["id"]))
                 st.rerun()
@@ -6813,10 +6887,8 @@ else:
             if not with_photos.empty:
                 with st.expander(f"📷 Photos of graded work ({len(with_photos)})"):
                     for _, r in with_photos.iterrows():
-                        photo_full_path = Path(__file__).parent / r["photo_path"]
-                        if photo_full_path.exists():
-                            st.caption(f"{fmt_date(r['assign_date'])} — {r['title']}")
-                            st.image(str(photo_full_path), width=300)
+                        st.caption(f"{fmt_date(r['assign_date'])} — {r['title']}")
+                        show_stored_photo(r["photo_path"])
             with st.expander("Delete a grade"):
                 gid = st.number_input("Grade ID", min_value=0, step=1, key="del_grade")
                 if st.button("Delete grade"):
