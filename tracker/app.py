@@ -1714,6 +1714,17 @@ def cell(v):
     return v.strip() if isinstance(v, str) and v.strip() else ""
 
 
+def num(v, default=1.0):
+    """A DataFrame cell as a float, else default. Guards against NaN/None/''
+    the same way cell() does for strings — `x or 1.0` returns NaN when x is
+    NaN (NaN is truthy), which then prints 'nan' or breaks arithmetic."""
+    try:
+        f = float(v)
+        return default if pd.isna(f) else f
+    except (TypeError, ValueError):
+        return default
+
+
 def fmt_date(d):
     """ISO date string (or date/None/NaN) -> MM-DD-YYYY for display.
     Storage stays ISO everywhere else so sorting/comparisons work as-is."""
@@ -2663,7 +2674,7 @@ def add_student_fun_project(student_id, school_year, title, subjects, descriptio
         (student_id, school_year, title, subject, subjects, description, steps,
          est_hours, icon, status, selected_date)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?)""",
-        (student_id, school_year, title, (subjects or "").split(",")[0].strip(),
+        (student_id, school_year, title, cell(subjects).split(",")[0].strip(),
          subjects, description, steps, est_hours, icon or "🗺️",
          date.today().isoformat()))
     conn.commit()
@@ -2779,11 +2790,11 @@ def render_quest_card(p, status):
     color. Purely visual; the caller renders real st.button()s beneath
     since HTML inside st.markdown can't call back into Python."""
     ribbon = {"queued": "New!", "active": "In Progress", "done": "The End"}[status]
-    icon = p["icon"] or "🗺️"
-    title = escape_html(str(p["title"]))
-    tags = escape_html(str(p["subjects"] or p["subject"] or ""))
-    desc = escape_html(str(p["description"] or ""))
-    hours = p["est_hours"] or 1.0
+    icon = cell(p["icon"]) or "🗺️"
+    title = escape_html(cell(p["title"]))
+    tags = escape_html(cell(p["subjects"]) or cell(p["subject"]))
+    desc = escape_html(cell(p["description"]))
+    hours = num(p["est_hours"], 1.0)
     mess_level = p["mess_level"] if "mess_level" in p.index else "Low"
     mess_n = {"Low": 1, "Medium": 2, "High": 3}.get(mess_level, 1)
     dots = "".join(f'<i class="{"on" if n <= mess_n else ""}"></i>' for n in (1, 2, 3))
@@ -2855,7 +2866,7 @@ def finish_fun_project(project_id, student_id, title, subjects_str, est_hours,
         SET status = 'finished', finished_date = ?, finished_at = ?, notes = ?
         WHERE id = ?""", (finished, finished_at, note or None, project_id))
     if not already_logged:
-        valid = [s.strip() for s in (subjects_str or "").split(",")
+        valid = [s.strip() for s in cell(subjects_str).split(",")
                 if s.strip() in WA_SUBJECTS + ["Electives"]]
         if not valid:
             valid = ["Occupational Education"]
@@ -2964,7 +2975,7 @@ def complete_foundations_module(module_id, student_id, title, subjects_str,
             VALUES (?, ?, 'complete', ?, 0, ?)""",
             (student_id, module_id, completed_at, note or None))
     if not already_logged:
-        valid = [s.strip() for s in (subjects_str or "").split(",")
+        valid = [s.strip() for s in cell(subjects_str).split(",")
                 if s.strip() in WA_SUBJECTS + ["Electives"]]
         if not valid:
             valid = ["Occupational Education"]
@@ -4841,9 +4852,9 @@ def render_travel_log(student_id, school_year, key_prefix):
         # park system, so unless a parent has pasted a specific booklet_url for
         # this park, fall back to a search that lands the actual booklet — that
         # always works, where a blank "none on file" was a dead end.
-        if lookup_row["booklet_url"]:
+        if cell(lookup_row["booklet_url"]):
             st.link_button(f"📄 Open {lookup_name}'s Junior Ranger booklet",
-                           lookup_row["booklet_url"])
+                           cell(lookup_row["booklet_url"]))
         else:
             import urllib.parse as _up
             q = _up.quote(f"{lookup_name} National Park Junior Ranger booklet pdf")
