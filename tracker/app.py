@@ -2747,6 +2747,30 @@ QUEST_CARD_CSS = """
 </style>
 """
 
+# Insight header for the My Week board — a summary strip (progress, hours,
+# streak, roughest subject) above the expandable day cards.
+WEEK_INSIGHTS_CSS = """
+<style>
+.wk-insights { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;
+  margin: 6px 0 14px; }
+.wk-stat { border: 3px solid #1A1610; border-radius: 12px; background: #FFFDF6;
+  box-shadow: 3px 3px 0 #1A1610; padding: 11px 13px; color: #1A1610; }
+.wk-stat.wide { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; }
+.wk-stat.rough { grid-column: 1 / -1; background: #FFE1EE; }
+.wk-stat .lab { font-size: 11px; font-weight: 800; letter-spacing: .05em;
+  text-transform: uppercase; color: #6b6152; }
+.wk-stat .lab .soft { font-weight: 700; text-transform: none; letter-spacing: 0; }
+.wk-stat .big { font-size: 22px; font-weight: 900; line-height: 1.15; margin-top: 2px;
+  font-variant-numeric: tabular-nums; }
+.wk-stat .big.sm { font-size: 17px; }
+.wk-stat .big .unit, .wk-stat .big .sub { font-size: 13px; font-weight: 700; color: #6b6152; }
+.wk-bar { flex: 1; height: 14px; border: 2.5px solid #1A1610; border-radius: 20px;
+  background: #1A16101f; overflow: hidden; }
+.wk-bar > i { display: block; height: 100%; background: #6FCF7A;
+  border-right: 2.5px solid #1A1610; }
+</style>
+"""
+
 
 def render_quest_card(p, status):
     """Render one quest as a Comic Log panel: thick ink border, halftone
@@ -6146,35 +6170,51 @@ if not parent_mode:
         return len(done), len(items)
 
     def render_week_board(d):
-        """The week as a five-lane board, one lane per school day, so he can
-        see the whole sprint at once and today in context. Read-only —
-        marking work off happens on Today."""
+        """The week as a vertical stack of expandable day cards — each day
+        opens to its subject cards with a resource link, today expanded by
+        default. Read-only; marking work off happens on Today."""
         school_year = student_row["school_year"] or "current"
+        grade = student_row["grade"]
+        sched = schedule_for_grade(grade)
+        resources = resources_for_grade(grade)
         monday = d - timedelta(days=d.weekday())
-        days = [monday + timedelta(days=i) for i in range(5)]
-        lanes = st.columns(5)
-        for lane, day in zip(lanes, days):
-            with lane:
-                is_today = day == d
-                st.markdown(
-                    f'<div class="slane-head{" today" if is_today else ""}">'
-                    f'{day.strftime("%a")} {day.day}{" 👈" if is_today else ""}</div>',
-                    unsafe_allow_html=True)
-                holiday = get_holiday_for_date(school_year, day)
+        for i in range(5):
+            day = monday + timedelta(days=i)
+            is_today = day == d
+            holiday = get_holiday_for_date(school_year, day)
+            blocks = sched.get(day.strftime("%A")) or []
+            done = sum(1 for b in blocks
+                       if get_block_entry(student_id, day, b[0], b[1]) is not None)
+            total = len(blocks)
+            # day-card label carries the at-a-glance progress
+            head = ("👉 " if is_today else "") + day.strftime("%A · %b %d")
+            if holiday:
+                summary = f"🎉 {holiday}"
+            elif total == 0:
+                summary = "no school"
+            elif done == total:
+                summary = "✅ all done"
+            else:
+                summary = f"{done}/{total} done"
+            with st.expander(f"{head}  —  {summary}", expanded=is_today):
                 if holiday:
-                    st.caption(f"🎉 {holiday}")
+                    st.caption(f"🎉 Day off — {holiday}")
                     continue
-                blocks = schedule_for_grade(student_row["grade"]).get(day.strftime("%A")) or []
-                if not blocks:
-                    st.caption("—")
+                if total == 0:
+                    st.caption("No school scheduled. 🎉")
                     continue
                 for block in blocks:
                     subject, start, end = block[0], block[1], block[2]
+                    resource_key = block[3] if len(block) > 3 else subject
                     entry = get_block_entry(student_id, day, subject, start)
                     status = entry["status"] if entry is not None else None
                     render_block_card(subject, start, end, status,
                                       bool(entry.get("struggled")) if entry is not None
                                       else False)
+                    res = resources.get(resource_key,
+                                        resources.get(subject, resources.get("Electives")))
+                    if res:
+                        st.caption(f"🔗 [{res[0]}]({res[1]})")
 
     if st.session_state.student_view == "Day 1 Checklist":
         school_year = student_row["school_year"] or "current"
@@ -6406,11 +6446,13 @@ if not parent_mode:
     elif st.session_state.student_view == "My Week":
         _d = date.today()
         _monday = _d - timedelta(days=_d.weekday())
-        st.subheader(f"🗓️ This week's board "
+        _grade = student_row["grade"]
+        st.subheader(f"🗓️ This week "
                      f"({_monday.strftime('%b %d')} – "
                      f"{(_monday + timedelta(days=4)).strftime('%b %d')})")
-        st.markdown(QUEST_CARD_CSS, unsafe_allow_html=True)
-        _sched = schedule_for_grade(student_row["grade"])
+        st.markdown(QUEST_CARD_CSS + WEEK_INSIGHTS_CSS, unsafe_allow_html=True)
+
+        _sched = schedule_for_grade(_grade)
         _wk_done = sum(
             1 for i in range(5)
             for b in (_sched.get((_monday + timedelta(days=i)).strftime("%A")) or [])
@@ -6418,11 +6460,46 @@ if not parent_mode:
         _wk_total = sum(
             len(_sched.get((_monday + timedelta(days=i)).strftime("%A")) or [])
             for i in range(5))
-        if _wk_total:
-            st.progress(_wk_done / _wk_total,
-                        text=f"{_wk_done} / {_wk_total} cards cleared this week")
-        st.caption("Faded, struck-through cards are ones you've already logged. "
-                   "Mark work off over on 📅 Today.")
+        _pct = round(100 * _wk_done / _wk_total) if _wk_total else 0
+
+        # hours logged (approved) this week vs. the schedule's planned total
+        _appr = get_entries(student_id, statuses=["approved"])
+        if not _appr.empty:
+            _appr = _appr.assign(_d=pd.to_datetime(_appr["entry_date"]).dt.date)
+            _wk_hours = _appr[(_appr["_d"] >= _monday)
+                              & (_appr["_d"] <= _monday + timedelta(days=4))]["hours"].sum()
+        else:
+            _wk_hours = 0.0
+        _planned = sum(planned_hours_by_subject(_grade).values())
+        _streak = get_health_streak(student_id)
+
+        # roughest subject this week, from the Daily Debrief
+        _wh = get_health_habits_range(student_id, _monday, _monday + timedelta(days=6))
+        _rough = _wh["rough_subject"].dropna() if not _wh.empty else pd.Series(dtype=str)
+        _rough = _rough[_rough.astype(str).str.strip().ne("")]
+        _rough_html = ""
+        if not _rough.empty:
+            _rs = _rough.value_counts()
+            _rough_html = (
+                f'<div class="wk-stat rough"><div class="lab">Roughest subject this week '
+                f'<span class="soft">(from the Daily Debrief)</span></div>'
+                f'<div class="big sm">😵‍💫 {escape_html(str(_rs.index[0]))} '
+                f'<span class="sub">— flagged {int(_rs.iloc[0])}×</span></div></div>')
+
+        st.markdown(
+            f'<div class="wk-insights">'
+            f'<div class="wk-stat wide"><div><div class="lab">Week progress</div>'
+            f'<div class="big">{_wk_done} / {_wk_total} <span class="unit">blocks</span></div></div>'
+            f'<div class="wk-bar"><i style="width:{_pct}%"></i></div></div>'
+            f'<div class="wk-stat"><div class="lab">Hours logged</div>'
+            f'<div class="big">{_wk_hours:.1f}<span class="sub"> / {_planned:.0f} planned</span></div></div>'
+            f'<div class="wk-stat"><div class="lab">Check-in streak</div>'
+            f'<div class="big">🔥 {_streak}<span class="sub"> day{"s" if _streak != 1 else ""}</span></div></div>'
+            f'{_rough_html}'
+            f'</div>',
+            unsafe_allow_html=True)
+        st.caption("Tap a day to open it. Faded, struck-through cards are ones "
+                   "you've already logged — mark work off over on 📅 Today.")
         render_week_board(_d)
 
     elif st.session_state.student_view == "Grade Scope":
