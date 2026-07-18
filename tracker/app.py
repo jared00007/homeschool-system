@@ -1706,6 +1706,14 @@ def planned_hours_by_subject(grade="8th"):
     return totals
 
 
+def cell(v):
+    """A DataFrame cell as a clean non-empty string, else ''. Guards against
+    pandas NULLs coming back as float('nan') — which is *truthy*, so a bare
+    `if row["col"]:` wrongly passes and then f-strings print 'nan' (or path
+    math crashes). Use `if cell(x):` instead of `if x:` for nullable columns."""
+    return v.strip() if isinstance(v, str) and v.strip() else ""
+
+
 def fmt_date(d):
     """ISO date string (or date/None/NaN) -> MM-DD-YYYY for display.
     Storage stays ISO everywhere else so sorting/comparisons work as-is."""
@@ -4750,22 +4758,22 @@ def render_travel_entries_list(student_id, key_prefix):
         with st.container(border=True):
             st.markdown(f"**{e['title']}** — {fmt_date(e['entry_date'])}")
             tags = []
-            if e["park_name"]:
-                tags.append(f"🏔️ {e['park_name']} ({e['park_state']})")
-            if e["city_name"]:
-                tags.append(f"📍 {e['city_name']} ({e['city_state']})")
-            if e["tag_state"]:
-                tags.append(f"🗺️ {e['tag_state']}")
-            if e["badge_earned"]:
+            if cell(e["park_name"]):
+                tags.append(f"🏔️ {cell(e['park_name'])} ({cell(e['park_state'])})")
+            if cell(e["city_name"]):
+                tags.append(f"📍 {cell(e['city_name'])} ({cell(e['city_state'])})")
+            if cell(e["tag_state"]):
+                tags.append(f"🗺️ {cell(e['tag_state'])}")
+            if e["badge_earned"] and pd.notna(e["badge_earned"]):
                 tags.append("🏅 Junior Ranger badge")
             if tags:
                 st.caption(" · ".join(tags))
-            if e["content"]:
-                st.write(e["content"])
-            if e["park_booklet_url"]:
-                st.caption(f"[📄 Junior Ranger booklet]({e['park_booklet_url']})")
-            if e["photo_path"]:
-                photo_full_path = Path(__file__).parent / e["photo_path"]
+            if cell(e["content"]):
+                st.write(cell(e["content"]))
+            if cell(e["park_booklet_url"]):
+                st.caption(f"[📄 Junior Ranger booklet]({cell(e['park_booklet_url'])})")
+            if cell(e["photo_path"]):
+                photo_full_path = Path(__file__).parent / cell(e["photo_path"])
                 if photo_full_path.exists():
                     st.image(str(photo_full_path), width=300)
             if st.button("Remove", key=f"{key_prefix}_travel_entry_del_{e['id']}"):
