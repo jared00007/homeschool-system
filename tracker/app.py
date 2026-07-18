@@ -44,7 +44,6 @@ except ImportError:
     from tracker.db_backend import connect_database, table_columns, table_exists
 
 DB_PATH = Path(__file__).parent / "homeschool.db"
-UPLOADS_BASE = Path(__file__).parent / "uploads"
 
 # Cloud deployment support: if DATABASE_URL or SUPABASE_DB_URL is present,
 # the app will use that instead of the local SQLite file.
@@ -1884,6 +1883,11 @@ def get_conn():
     conn.execute("""CREATE TABLE IF NOT EXISTS stored_files (
         file_key TEXT PRIMARY KEY, mime TEXT, filename TEXT, data TEXT,
         created_at TEXT)""")
+    # Testing-phase feedback: a box on every page lets a family leave a note
+    # right where they hit something. Meant to be pulled out after the pilot.
+    conn.execute("""CREATE TABLE IF NOT EXISTS feedback (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER,
+        view TEXT, mode TEXT, message TEXT NOT NULL, created_at TEXT)""")
     conn.execute("""CREATE TABLE IF NOT EXISTS health_habits (
         id INTEGER PRIMARY KEY AUTOINCREMENT, student_id INTEGER NOT NULL,
         log_date TEXT NOT NULL, exercise INTEGER DEFAULT 0,
@@ -2576,6 +2580,45 @@ def delete_stored_file(ref):
 # Back-compat aliases: both upload paths now store in the DB.
 def save_uploaded_curriculum_file(uploaded_file):
     return store_uploaded_file(uploaded_file)
+
+
+# ---- Testing-phase feedback -------------------------------------------------
+def add_feedback(student_id, view, mode, message):
+    conn.execute("""INSERT INTO feedback (student_id, view, mode, message, created_at)
+        VALUES (?, ?, ?, ?, ?)""",
+        (student_id, view, mode, message,
+         datetime.now().isoformat(timespec="seconds")))
+    conn.commit()
+
+
+def get_all_feedback():
+    return pd.read_sql("SELECT * FROM feedback ORDER BY created_at DESC", conn)
+
+
+def clear_feedback():
+    conn.execute("DELETE FROM feedback")
+    conn.commit()
+
+
+def render_feedback_box(view, mode, student_id):
+    """A small 'leave feedback on this page' box shown at the bottom of every
+    view during the pilot. Tagged with which page/mode it came from so a
+    parent can read it all in Settings → Testing feedback."""
+    st.divider()
+    with st.expander("💬 Feedback on this page (testing)"):
+        st.caption("Spot something confusing, broken, or great? Jot it here — "
+                   "it's tagged to this page so we know exactly where you meant.")
+        msg = st.text_area("Your note", key=f"fb_{mode}_{view}",
+                           label_visibility="collapsed",
+                           placeholder="e.g. this button was confusing / loved this / "
+                                       "the link is dead")
+        if st.button("Send feedback", key=f"fb_send_{mode}_{view}"):
+            if msg.strip():
+                add_feedback(student_id, view, mode, msg.strip())
+                st.success("Thanks! Sent. 🙌")
+                st.rerun()
+            else:
+                st.warning("Type a note first.")
 
 
 def get_curriculum_materials():
@@ -4213,14 +4256,14 @@ def render_foundations(student_id, school_year, key_prefix):
                 st.markdown(head)
                 st.caption(m["description"] or "")
                 with st.expander("What you'll get out of it + how to do it"):
-                    if m["objectives"]:
+                    if cell(m["objectives"]):
                         st.markdown(f"**You'll be able to:** {m['objectives']}")
                     steps = [s for s in (m["activities"] or "").split("\n") if s.strip()]
                     if steps:
                         st.markdown("**Do this:**")
                         for i, s in enumerate(steps, 1):
                             st.markdown(f"{i}. {s}")
-                    if m["source_url"]:
+                    if cell(m["source_url"]):
                         st.markdown(f"🔗 [Start here]({m['source_url']})")
                     tags = ", ".join(t.strip() for t in (m["subjects"] or "").split(",")
                                      if t.strip())
@@ -4985,12 +5028,12 @@ def render_proposals_review(student_id, school_year):
         for _, p in pending.iterrows():
             with st.container(border=True):
                 st.markdown(f"**{p['title']}** — {p['prop_type'].title()}")
-                if p["secondary"]:
+                if cell(p["secondary"]):
                     label = "Resource" if p["prop_type"] == "elective" else "Author"
                     st.caption(f"{label}: {p['secondary']}")
-                if p["url"]:
+                if cell(p["url"]):
                     st.caption(f"Link: {p['url']}")
-                if p["description"]:
+                if cell(p["description"]):
                     st.caption(p["description"])
                 note = st.text_input("Note (shown to student, esp. if rejecting)",
                                      key=f"prop_note_{p['id']}")
@@ -5329,7 +5372,7 @@ def render_accounts_checklist(student_id, school_year):
         for _, r in pending.iterrows():
             with st.container(border=True):
                 st.markdown(f"**{r['url']}**  \n_reported {fmt_date(r['report_date'])}_")
-                if r["description"]:
+                if cell(r["description"]):
                     st.caption(r["description"])
                 note = st.text_input("Note (optional)", key=f"link_note_{r['id']}")
                 bc1, bc2, bc3 = st.columns(3)
@@ -5353,7 +5396,7 @@ def render_accounts_checklist(student_id, school_year):
             icons = {"fixed": "✅", "dismissed": "❌"}
             for _, r in resolved.iterrows():
                 st.markdown(f"{icons.get(r['status'], '')} {r['url']} — {r['status'].title()}")
-                if r["parent_note"]:
+                if cell(r["parent_note"]):
                     st.caption(f"Note: {r['parent_note']}")
 
 
@@ -5537,7 +5580,7 @@ def render_health_habits_checkin(student_id):
                 if st.form_submit_button("💾 Save journal", type="primary"):
                     set_health_journal(student_id, today, journal_text)
                     st.success("Saved.")
-            if h["journal"]:
+            if cell(h["journal"]):
                 st.caption("✓ Saved earlier today. Edit above and Save to update.")
     return is_done
 
@@ -5612,7 +5655,7 @@ def render_health_habits_summary(student_id):
                 tags = [t for t in (r["friction_tags"] or "").split(",") if t]
                 if tags:
                     line = "  ".join(tags)
-                    if r["rough_subject"]:
+                    if cell(r["rough_subject"]):
                         line += f"  — worst: **{r['rough_subject']}**"
                     st.caption(line)
                 if r["lesson_feedback"] and str(r["lesson_feedback"]).strip():
@@ -5653,7 +5696,7 @@ def render_support_resources(student_id):
                 cc1, cc2 = st.columns([5, 1])
                 with cc1:
                     st.markdown(f"**{fmt_date(r['checkin_date'])}**")
-                    if r["notes"]:
+                    if cell(r["notes"]):
                         st.caption(r["notes"])
                 with cc2:
                     if st.button("Remove", key=f"checkin_del_{r['id']}"):
@@ -6044,7 +6087,7 @@ if not parent_mode:
         with st.expander("See what's new", expanded=True):
             for _, m in _unseen_materials.iterrows():
                 st.markdown(f"**{m['title']}** ({m['subject'] or 'Uncategorized'})")
-                if m["notes"]:
+                if cell(m["notes"]):
                     st.caption(m["notes"])
             if st.button("Got it — mark as seen"):
                 mark_curriculum_materials_seen()
@@ -6694,6 +6737,9 @@ if not parent_mode:
     elif st.session_state.student_view == "Resources":
         render_resources_tab(parent_mode=False)
 
+    # testing-phase feedback box at the bottom of every student page
+    render_feedback_box(st.session_state.student_view, "student", student_id)
+
 # ============================================================ PARENT MODE
 else:
     if student_id is None:
@@ -7120,9 +7166,31 @@ else:
             st.success("Saved." if new_code.strip() else "Cleared.")
 
         st.divider()
+        st.subheader("💬 Testing feedback")
+        _fb = get_all_feedback()
+        if _fb.empty:
+            st.caption("No feedback submitted yet. A box sits at the bottom of "
+                       "every page for you and the kids to leave notes during "
+                       "testing.")
+        else:
+            st.caption(f"{len(_fb)} note{'s' if len(_fb) != 1 else ''} from the "
+                       "feedback boxes across the app.")
+            for _, f in _fb.iterrows():
+                who = "🎒 student" if f["mode"] == "student" else "🔑 parent"
+                st.markdown(f"**{cell(f['view']) or 'a page'}** · {who} · "
+                            f"{fmt_date(f['created_at'])}")
+                st.info(cell(f["message"]))
+            if st.button("Clear all feedback"):
+                clear_feedback()
+                st.rerun()
+
+        st.divider()
         st.caption("The weekly schedule, curriculum links, and hour targets are "
                    "still constants near the top of app.py — edit that file to "
                    "change the plan.")
 
     elif parent_view == "Resources":
         render_resources_tab(parent_mode=True)
+
+    # testing-phase feedback box at the bottom of every parent page
+    render_feedback_box(parent_view, "parent", student_id)
