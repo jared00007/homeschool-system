@@ -1738,6 +1738,8 @@ def fmt_date(d):
 
 
 def letter_grade(pct):
+    if pct is None or (isinstance(pct, float) and pd.isna(pct)):
+        return "—"
     for cutoff, letter in [(93, "A"), (90, "A-"), (87, "B+"), (83, "B"),
                            (80, "B-"), (77, "C+"), (73, "C"), (70, "C-"),
                            (67, "D+"), (63, "D"), (60, "D-")]:
@@ -2481,7 +2483,7 @@ def add_fun_project_pool_option(title, subjects, description, steps, mess_level,
     conn.execute("""INSERT INTO fun_project_pool
         (title, subjects, subject, description, steps, mess_level, est_hours, icon)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (title, subjects, (subjects or "").split(",")[0].strip(),
+        (title, subjects, cell(subjects).split(",")[0].strip(),
          description, steps, mess_level or "Low", est_hours, icon or "🗺️"))
     conn.commit()
 
@@ -2494,7 +2496,7 @@ def update_fun_project_pool_option(option_id, title, subjects, description, step
         est_hours = 1.0
     conn.execute("""UPDATE fun_project_pool SET title = ?, subjects = ?, subject = ?,
         description = ?, steps = ?, mess_level = ?, est_hours = ?, icon = ? WHERE id = ?""",
-        (title, subjects, (subjects or "").split(",")[0].strip(),
+        (title, subjects, cell(subjects).split(",")[0].strip(),
          description, steps, mess_level or "Low", est_hours, icon or "🗺️", option_id))
     conn.commit()
 
@@ -3231,7 +3233,7 @@ def generate_weekly_plan(student_id, school_year, week_start):
                 continue
             passion.append({"ref_id": int(r["id"]), "title": r["title"],
                             "subjects": r["subjects"] or r["subject"],
-                            "est_hours": float(r["est_hours"] or 1.0)})
+                            "est_hours": num(r["est_hours"], 1.0)})
     # ---- top up from the pool (interest-ranked), auto-adding as his quests
     have = passion_target - done_passion_h - sum(p["est_hours"] for p in passion)
     if have > 0:
@@ -3244,11 +3246,11 @@ def generate_weekly_plan(student_id, school_year, week_start):
                 break
             add_student_fun_project(student_id, school_year, r["title"],
                                     r["subjects"] or r["subject"], r["description"],
-                                    r["steps"], r["est_hours"] or 1.0, r["icon"])
+                                    r["steps"], num(r["est_hours"], 1.0), r["icon"])
             new_id = conn.execute("""SELECT id FROM student_fun_projects
                 WHERE student_id = ? AND title = ? ORDER BY id DESC LIMIT 1""",
                 (student_id, r["title"])).fetchone()[0]
-            eh = float(r["est_hours"] or 1.0)
+            eh = num(r["est_hours"], 1.0)
             passion.append({"ref_id": int(new_id), "title": r["title"],
                             "subjects": r["subjects"] or r["subject"], "est_hours": eh})
             have -= eh
@@ -3264,7 +3266,7 @@ def generate_weekly_plan(student_id, school_year, week_start):
                 break
             if ("foundations", int(r["id"])) in done_refs:
                 continue
-            eh = float(r["est_hours"] or 1.0)
+            eh = num(r["est_hours"], 1.0)
             foundations.append({"ref_id": int(r["id"]), "title": r["title"],
                                 "subjects": r["subjects"], "est_hours": eh})
             acc -= eh
@@ -4083,7 +4085,7 @@ def render_fun_projects_picker(student_id, school_year, key_prefix):
                     else:
                         finish_fun_project(int(p["id"]), student_id, p["title"],
                                           p["subjects"] or p["subject"],
-                                          p["est_hours"] or 1.0, note=quest_note)
+                                          num(p["est_hours"], 1.0), note=quest_note)
                         st.success("Quest complete! Sent to your parent for approval.")
                         st.rerun()
                 if bc2.button("⏸️ Pause", key=f"{key_prefix}_proj_pause_{p['id']}",
@@ -4120,7 +4122,7 @@ def render_fun_projects_picker(student_id, school_year, key_prefix):
         add_student_fun_project(
             student_id, school_year, proj["title"],
             proj["subjects"] or proj["subject"], proj["description"],
-            proj["steps"], proj["est_hours"] or 1.0, proj["icon"])
+            proj["steps"], num(proj["est_hours"], 1.0), proj["icon"])
 
     # --- ✨ Picked for you: the highest interest-scoring quests he hasn't
     # already taken. This is what makes the interest chips visibly matter on
@@ -4258,16 +4260,16 @@ def render_foundations(student_id, school_year, key_prefix):
                 with st.expander("What you'll get out of it + how to do it"):
                     if cell(m["objectives"]):
                         st.markdown(f"**You'll be able to:** {m['objectives']}")
-                    steps = [s for s in (m["activities"] or "").split("\n") if s.strip()]
+                    steps = [s for s in cell(m["activities"]).split("\n") if s.strip()]
                     if steps:
                         st.markdown("**Do this:**")
                         for i, s in enumerate(steps, 1):
                             st.markdown(f"{i}. {s}")
                     if cell(m["source_url"]):
                         st.markdown(f"🔗 [Start here]({m['source_url']})")
-                    tags = ", ".join(t.strip() for t in (m["subjects"] or "").split(",")
+                    tags = ", ".join(t.strip() for t in cell(m["subjects"]).split(",")
                                      if t.strip())
-                    st.caption(f"Counts toward: {tags} · ~{m['est_hours'] or 1.0:g} hr")
+                    st.caption(f"Counts toward: {tags} · ~{num(m['est_hours'], 1.0):g} hr")
                 if is_done:
                     when = str(m["completed_at"])[:10] if m["completed_at"] else ""
                     c1, c2 = st.columns([3, 1])
@@ -4290,7 +4292,7 @@ def render_foundations(student_id, school_year, key_prefix):
                         else:
                             complete_foundations_module(
                                 int(m["id"]), student_id, m["title"],
-                                m["subjects"], m["est_hours"] or 1.0, note=f_note)
+                                m["subjects"], num(m["est_hours"], 1.0), note=f_note)
                             st.success("Nice — sent to your parent for approval.")
                             st.balloons()
                             st.rerun()
@@ -4314,7 +4316,7 @@ def render_foundations_admin():
                               index=FOUNDATIONS_PILLARS.index(row["pillar"])
                               if row is not None and row["pillar"] in FOUNDATIONS_PILLARS
                               else 0, key=f"{pfx}_pillar")
-        cur_subj = [s.strip() for s in (row["subjects"] or "").split(",")
+        cur_subj = [s.strip() for s in cell(row["subjects"]).split(",")
                     if s.strip()] if row is not None else []
         subjects = st.multiselect("Counts toward (WA subjects)",
                                   WA_SUBJECTS + ["Electives"], default=cur_subj,
@@ -4332,7 +4334,7 @@ def render_foundations_admin():
                                    value=row["source_url"] if row is not None else "",
                                    key=f"{pfx}_url")
         est_hours = st.number_input("Estimated hours", min_value=0.25, step=0.25,
-                                    value=float(row["est_hours"] or 1.0)
+                                    value=num(row["est_hours"], 1.0)
                                     if row is not None else 1.0, key=f"{pfx}_hrs")
         return (title, pillar, description, objectives, activities,
                 ", ".join(subjects), est_hours, source_url)
@@ -4574,11 +4576,14 @@ def build_esa_packet_html(student_id, student_row, school_year):
     grade_rows = ""
     if not ga.empty:
         for _, g in ga.iterrows():
-            pct = (f" ({100 * g['score'] / g['max_score']:.0f}%)"
-                   if g["max_score"] else "")
+            _s = num(g["score"], None)
+            _m = num(g["max_score"], None)
+            pct = f" ({100 * _s / _m:.0f}%)" if (_s is not None and _m) else ""
+            s_txt = "—" if _s is None else f"{_s:g}"
+            m_txt = "—" if _m is None else f"{_m:g}"
             grade_rows += (f"<tr><td>{esc(fmt_date(g['assign_date']))}</td>"
                            f"<td>{esc(g['subject'])}</td><td>{esc(g['title'])}</td>"
-                           f"<td class='n'>{esc(g['score'])}/{esc(g['max_score'])}{pct}</td></tr>")
+                           f"<td class='n'>{s_txt}/{m_txt}{pct}</td></tr>")
     if not grade_rows:
         grade_rows = "<tr><td colspan='4'>No grades recorded.</td></tr>"
 
@@ -4876,7 +4881,8 @@ def render_travel_entry_form(student_id, school_year, key_prefix):
                 photo_path = (save_uploaded_photo(photo, student_id)
                               if photo is not None else None)
                 if entry_type == "🏔️ National Park visit":
-                    park_id = int(parks_df[parks_df["name"] == park_name].iloc[0]["id"])
+                    _pm = parks_df[parks_df["name"] == park_name]
+                    park_id = int(_pm.iloc[0]["id"]) if not _pm.empty else None
                     add_travel_entry(student_id, school_year, entry_date, park_name,
                                      content.strip(), photo_path, None, park_id,
                                      None, badge)
@@ -4964,12 +4970,13 @@ def render_travel_log(student_id, school_year, key_prefix):
         parks_df = get_national_parks_df()
         lookup_name = st.selectbox("Park", list(parks_df["name"]),
                                    key=f"{key_prefix}_park_lookup")
-        lookup_row = parks_df[parks_df["name"] == lookup_name].iloc[0]
+        _lm = parks_df[parks_df["name"] == lookup_name]
+        lookup_row = _lm.iloc[0] if not _lm.empty else None
         # Per-park booklet PDFs aren't published at stable URLs across the whole
         # park system, so unless a parent has pasted a specific booklet_url for
         # this park, fall back to a search that lands the actual booklet — that
         # always works, where a blank "none on file" was a dead end.
-        if cell(lookup_row["booklet_url"]):
+        if lookup_row is not None and cell(lookup_row["booklet_url"]):
             st.link_button(f"📄 Open {lookup_name}'s Junior Ranger booklet",
                            cell(lookup_row["booklet_url"]))
         else:
@@ -5652,7 +5659,7 @@ def render_health_habits_summary(student_id):
                             if pd.notna(r["lesson_score"]) else "—")
                 st.markdown(f"**{fmt_date(r['log_date'])}** · Him: {mood_e} · "
                             f"Schoolwork: {lesson_e}")
-                tags = [t for t in (r["friction_tags"] or "").split(",") if t]
+                tags = [t for t in cell(r["friction_tags"]).split(",") if t]
                 if tags:
                     line = "  ".join(tags)
                     if cell(r["rough_subject"]):
@@ -6373,7 +6380,7 @@ if not parent_mode:
                     finish_fun_project(
                         int(active_quest["id"]), student_id, active_quest["title"],
                         active_quest["subjects"] or active_quest["subject"],
-                        active_quest["est_hours"] or 1.0)
+                        num(active_quest["est_hours"], 1.0))
                     st.success("Quest complete! Sent to your parent for approval.")
                     st.rerun()
 
@@ -6811,7 +6818,7 @@ else:
                     st.markdown(f"**{fmt_date(row['entry_date'])} · {row['subject']}**{flag}")
                     st.caption(row["description"] or "")
                 with c2:
-                    adj = st.number_input("Hours", value=float(row["hours"]),
+                    adj = st.number_input("Hours", value=num(row["hours"], 0.0),
                                           min_value=0.0, max_value=12.0, step=0.25,
                                           key=f"adj_{row['id']}")
                 with c3:
@@ -6919,7 +6926,9 @@ else:
         ga = get_assignments(student_id)
         if not ga.empty:
             ga_show = ga.copy()
-            ga_show["%"] = (100 * ga_show["score"] / ga_show["max_score"]).round(1)
+            _sc = pd.to_numeric(ga_show["score"], errors="coerce")
+            _mx = pd.to_numeric(ga_show["max_score"], errors="coerce").replace(0, pd.NA)
+            ga_show["%"] = (100 * _sc / _mx).round(1)
             ga_show["Letter"] = ga_show["%"].apply(letter_grade)
             ga_show["📷"] = ga_show["photo_path"].apply(lambda p: "📷" if p else "")
             ga_show["assign_date"] = ga_show["assign_date"].apply(fmt_date)
