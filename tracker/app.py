@@ -253,6 +253,96 @@ CURRICULUM_RESOURCES = {
                 "fuzzy\" if it didn't quite click."]),
 }
 
+# 9th-grade curriculum resources — high-school-level subjects, all free and
+# no-signup-to-browse. Used when a student's grade is 9th (resources_for_grade).
+# Links verified live.
+CURRICULUM_RESOURCES_9TH = {
+    "Mathematics": ("Khan Academy — Algebra 1",
+                    "https://www.khanacademy.org/math/algebra",
+                    "Algebra 1 (or Geometry if Algebra 1 is done). Work units "
+                    "in order with the mastery system.",
+                    ["Open the first unit that isn't fully mastered.",
+                     "Watch the lesson video, then do the practice set.",
+                     "Finish at least one full lesson or 20 practice problems.",
+                     "Missed one? Read the hint before retrying — don't guess.",
+                     "Click \"✅ Done, got it\" — or \"😕 Done, still fuzzy\"."]),
+    "Reading": ("CommonLit — grade 9 texts",
+                "https://www.commonlit.org/",
+                "9th-grade passages + questions, or an assigned novel. Read the "
+                "whole thing before answering.",
+                ["Open the next assigned passage, or pick a grade-9 text.",
+                 "Read it all the way through, then answer every question.",
+                 "Reading a novel instead? Read the full block, note your page.",
+                 "Click \"✅ Done, got it\" — or \"😕 Done, still fuzzy\"."]),
+    "Writing": ("Essay writing + MLA basics (Purdue OWL)",
+                "https://owl.purdue.edu/owl/research_and_citation/mla_style/",
+                "9th grade steps up to real essays with evidence and MLA "
+                "citations. One structured piece weekly; parent reviews.",
+                ["Pick this week's prompt (analysis, argument, or research).",
+                 "Plan first: thesis + 2-3 supporting points with evidence.",
+                 "Draft it — intro with a thesis, body paragraphs with "
+                 "evidence/quotes, a conclusion.",
+                 "Cite any source in MLA (use the Purdue OWL link).",
+                 "Leave it for a parent, then \"✅ Done, got it\" — or \"😕 "
+                 "Done, still fuzzy\"."]),
+    "Science": ("Khan Academy — Biology",
+                "https://www.khanacademy.org/science/biology",
+                "Biology: cells, DNA & genetics, evolution, ecology, body "
+                "systems. (CK-12 Biology is a good alternate.)",
+                ["Open your current unit; read/watch today's section.",
+                 "Do the practice questions at the end.",
+                 "Write down anything still fuzzy to ask a parent.",
+                 "Click \"✅ Done, got it\" — or \"😕 Done, still fuzzy\"."]),
+    "Social Studies": ("Khan Academy — US Government & Civics",
+                       "https://www.khanacademy.org/humanities/us-government-and-civics",
+                       "Civics: the Constitution, branches of government, "
+                       "rights, and how policy works.",
+                       ["Open your current civics unit.",
+                        "Watch the lesson, then do the practice set.",
+                        "Complete at least one full lesson.",
+                        "Click \"✅ Done, got it\" — or \"😕 Done, still fuzzy\"."]),
+    "History": ("Khan Academy World History + Crash Course",
+                "https://www.khanacademy.org/humanities/world-history",
+                "World History — ancient civilizations to the modern era. Khan "
+                "for structure, Crash Course World History for context.",
+                ["Do one full Khan World History lesson (video + practice).",
+                 "Finished early? Watch the matching Crash Course episode.",
+                 "Click \"✅ Done, got it\" — or \"😕 Done, still fuzzy\"."]),
+    "Health": ("CDC BAM! Body & Mind",
+               "https://www.cdc.gov/bam/index.html",
+               "Nutrition, fitness, first aid, mental health, decision-making.",
+               ["Open this week's topic (ask a parent if none assigned).",
+                "Read/complete the short unit.",
+                "Use leftover time on a real healthy habit; jot what you did.",
+                "Click \"✅ Done, got it\" — or \"😕 Done, still fuzzy\"."]),
+    "Art & Music Appreciation": ("Khan Academy Art History + museum stops",
+                                 "https://www.khanacademy.org/humanities/art-history",
+                                 "Museum/gallery/concert visits count — log them "
+                                 "as field trips.",
+                                 ["Complete one art or music appreciation lesson.",
+                                  "A museum/gallery/concert this week counts "
+                                  "instead — tell a parent to log the field trip.",
+                                  "Click \"✅ Done, got it\" — or \"😕 Done, "
+                                  "still fuzzy\"."]),
+    "Occupational Education": ("Careers & life skills (Khan)",
+                               "https://www.khanacademy.org/college-careers-more",
+                               "Careers, budgeting, job skills — or shadowing a "
+                               "parent's work.",
+                               ["Explore one topic: a career, budgeting, or "
+                                "job skills.",
+                                "Shadowing a parent's work counts instead — jot "
+                                "what you learned.",
+                                "Click \"✅ Done, got it\" — or \"😕 Done, still "
+                                "fuzzy\"."]),
+    "Electives": ("World language / coding / arts",
+                  "https://www.duolingo.com/",
+                  "In 9th grade electives earn transcript credit — a world "
+                  "language especially. Follow the picks in 🎯 Electives & Books.",
+                  ["Open whichever elective you've picked.",
+                   "Do one full lesson or session — 15-20 focused minutes.",
+                   "Click \"✅ Done, got it\" — or \"😕 Done, still fuzzy\"."]),
+}
+
 MAX_ELECTIVES = 2
 
 # Seed data only — the live, editable pool lives in the elective_pool DB table
@@ -539,6 +629,71 @@ LANDON_FUN_PROJECT_SEEDS = [
               "Write the rules/objective in your own words.\n"
               "Describe it to a parent like you're pitching it.",
      "mess_level": "Low", "est_hours": 1.5},
+]
+
+# Generic 9th-grade / high-school quest ideas — seeded into the same shared
+# pool (incremental by title, like the seeds above). Not Landon-specific, so
+# they suit any household's 9th grader; the passion blender still ranks them by
+# each student's interests.
+NINTH_GRADE_QUEST_SEEDS = [
+    {"title": "Build a Real Budget & Savings Plan",
+     "subjects": "Mathematics, Occupational Education",
+     "description": "Make a monthly budget with real numbers (an allowance, a "
+                    "job, or a hypothetical paycheck) and a savings goal — "
+                    "percentages, and money math that actually matters.",
+     "steps": "List income and every expense category.\n"
+              "Assign a dollar amount to each; make it balance.\n"
+              "Set one savings goal and figure how long it takes.\n"
+              "Show a parent and explain your choices.",
+     "mess_level": "Low", "est_hours": 2.0, "icon": "💰"},
+    {"title": "Design a Science Fair Experiment",
+     "subjects": "Science, Writing",
+     "description": "Run a real experiment start to finish: question, "
+                    "hypothesis, variables, data, conclusion — the backbone of "
+                    "high-school lab science.",
+     "steps": "Pick a testable question.\n"
+              "Write a hypothesis and identify your variables.\n"
+              "Run it and record the data.\n"
+              "Write up what you found and whether the hypothesis held.",
+     "mess_level": "Medium", "est_hours": 3.0, "icon": "🔬"},
+    {"title": "Write & Publish a Short Story or Zine",
+     "subjects": "Writing, Art & Music Appreciation",
+     "description": "Draft, revise, and 'publish' a short story or a hand-made "
+                    "zine — real drafting and revision, not a one-shot.",
+     "steps": "Outline the story or zine.\n"
+              "Write a full first draft.\n"
+              "Revise it once for clarity and voice.\n"
+              "Make a clean final copy and share it.",
+     "mess_level": "Low", "est_hours": 3.0, "icon": "✍️"},
+    {"title": "Model a Small Business",
+     "subjects": "Mathematics, Occupational Education, Writing",
+     "description": "Plan a small business — costs, pricing, profit, and a "
+                    "one-page pitch. Algebra and economics with real stakes.",
+     "steps": "Pick a product or service.\n"
+              "List startup costs and price per unit.\n"
+              "Work out how many you'd sell to break even and to profit.\n"
+              "Write a one-page pitch and present it.",
+     "mess_level": "Low", "est_hours": 2.5, "icon": "📈"},
+    {"title": "Take Both Sides of a Real Debate",
+     "subjects": "Social Studies, History, Writing",
+     "description": "Pick a real issue and argue BOTH sides with evidence — "
+                    "the argument-and-evidence skill 9th-grade writing is built "
+                    "around.",
+     "steps": "Choose a debatable topic.\n"
+              "Research and note the strongest points on each side.\n"
+              "Write a short case for each side, with evidence.\n"
+              "Say which convinced you and why.",
+     "mess_level": "Low", "est_hours": 2.0, "icon": "⚖️"},
+    {"title": "Track & Analyze a Real Dataset",
+     "subjects": "Mathematics, Science",
+     "description": "Collect or find real data (weather, sports, prices, "
+                    "steps) and find the story in it — graphs, averages, and "
+                    "trends.",
+     "steps": "Pick something to measure and gather at least 2 weeks of data.\n"
+              "Put it in a spreadsheet.\n"
+              "Make a graph and compute the average and range.\n"
+              "Write 3 things the data shows.",
+     "mess_level": "Low", "est_hours": 2.5, "icon": "📊"},
 ]
 
 # Seed data for the national_parks pool — the 63 congressionally-designated
@@ -1470,6 +1625,42 @@ WEEKLY_SCHEDULE = {
                ("Electives", "11:30", "13:30")],
 }
 
+# 9th-grade weekly schedule — same subject tags (so hours/compliance and the
+# quest cards work unchanged), high-school rhythm, paired with the 9th-grade
+# resource links. Used when a student's grade is 9th (schedule_for_grade).
+WEEKLY_SCHEDULE_9TH = {
+    "Monday": [("Mathematics", "08:30", "10:00"), ("Reading", "10:00", "11:00"),
+               ("Writing", "11:00", "11:45"), ("Science", "12:15", "13:45"),
+               ("Social Studies", "13:45", "14:45")],
+    "Tuesday": [("Mathematics", "08:30", "10:00"), ("Reading", "10:00", "11:00"),
+                ("Writing", "11:00", "11:45"), ("History", "12:15", "13:45"),
+                ("Science", "13:45", "14:45")],
+    "Wednesday": [("Mathematics", "08:30", "10:00"), ("Reading", "10:00", "11:00"),
+                  ("Writing", "11:00", "11:45"), ("Science", "12:15", "13:45"),
+                  ("History", "13:45", "14:45")],
+    "Thursday": [("Mathematics", "08:30", "10:00"), ("Reading", "10:00", "11:00"),
+                 ("Social Studies", "11:00", "12:30"),
+                 ("Occupational Education", "13:00", "13:45"),
+                 ("Health", "13:45", "14:30")],
+    "Friday": [("Mathematics", "08:30", "09:30"), ("Reading", "09:30", "10:30"),
+               ("Art & Music Appreciation", "10:30", "12:00"),
+               ("Electives", "12:30", "14:00")],
+}
+
+
+def _is_ninth(grade):
+    return "9" in str(grade or "")
+
+
+def schedule_for_grade(grade):
+    """The weekly schedule for a student's grade (9th, else the 8th default)."""
+    return WEEKLY_SCHEDULE_9TH if _is_ninth(grade) else WEEKLY_SCHEDULE
+
+
+def resources_for_grade(grade):
+    """The curriculum resource links for a student's grade."""
+    return CURRICULUM_RESOURCES_9TH if _is_ninth(grade) else CURRICULUM_RESOURCES
+
 # Student-facing quest names — display only, never touches the underlying
 # `subject` value used for hours/compliance tracking. Parent mode keeps
 # showing real subject names (render_day_blocks only runs in Student mode).
@@ -1492,18 +1683,19 @@ QUEST_SUBJECT_COLORS = {
     "Art & Music Appreciation": "#FF5FA2", "Electives": "#4FC3E8",
 }
 
-def planned_hours_by_subject():
-    """Weekly target hours per subject, derived by adding up WEEKLY_SCHEDULE.
+def planned_hours_by_subject(grade="8th"):
+    """Weekly target hours per subject, derived by adding up the grade's
+    schedule.
 
     This used to be a hand-typed dict kept alongside the schedule, which
     silently drifted out of sync with it (Writing was listed as 2.0 while the
     schedule only allotted 1.75, so a perfect week still showed as "behind";
     Mathematics ran the other way at 6.0 vs 6.5). Deriving it means the
     schedule is the single source of truth and a perfect week always reads as
-    100% — edit WEEKLY_SCHEDULE and these targets follow automatically.
+    100% — edit the schedule and these targets follow automatically.
     """
     totals = {}
-    for blocks in WEEKLY_SCHEDULE.values():
+    for blocks in schedule_for_grade(grade).values():
         for block in blocks:
             subject, start, end = block[0], block[1], block[2]
             totals[subject] = round(totals.get(subject, 0.0)
@@ -1879,7 +2071,7 @@ def get_conn():
     # present) since fun_project_pool may already be populated from before.
     _existing_titles = {r[0] for r in
         conn.execute("SELECT title FROM fun_project_pool").fetchall()}
-    for proj in LANDON_FUN_PROJECT_SEEDS:
+    for proj in LANDON_FUN_PROJECT_SEEDS + NINTH_GRADE_QUEST_SEEDS:
         if proj["title"] not in _existing_titles:
             conn.execute("""INSERT INTO fun_project_pool
                 (title, subjects, subject, description, steps, mess_level, est_hours, icon)
@@ -1968,6 +2160,14 @@ def set_passion_profile(student_id, interests, core_values):
 
 def get_students():
     return pd.read_sql("SELECT * FROM students ORDER BY name", conn)
+
+
+def get_student_grade(student_id):
+    """A student's grade string ('8th'/'9th'), for grade-aware schedule/scope.
+    Defaults to 8th when unknown."""
+    row = conn.execute("SELECT grade FROM students WHERE id = ?",
+                       (student_id,)).fetchone()
+    return (row[0] if row and row[0] else "8th")
 
 
 def get_entries(student_id, statuses=None):
@@ -3308,7 +3508,8 @@ def grade_summary(student_id):
 def suggest_quiz_for_day(student_id, d):
     """Pick a quiz topic tied to one of the subjects already scheduled today,
     preferring one that hasn't been taken yet."""
-    subjects_today = [b[0] for b in WEEKLY_SCHEDULE.get(d.strftime("%A"), [])]
+    schedule = schedule_for_grade(get_student_grade(student_id))
+    subjects_today = [b[0] for b in schedule.get(d.strftime("%A"), [])]
     ga = get_assignments(student_id)
     for subj in subjects_today:
         topics = QUIZ_BANK.get(subj)
@@ -5671,7 +5872,7 @@ if not parent_mode:
             st.success(f"🎉 No school today — {holiday_label}")
             return 0, 0
         day_name = d.strftime("%A")
-        blocks = WEEKLY_SCHEDULE.get(day_name)
+        blocks = schedule_for_grade(student_row["grade"]).get(day_name)
         if not blocks:
             st.info("No school scheduled on this day. 🎉")
             return 0, 0
@@ -5721,8 +5922,9 @@ if not parent_mode:
                                     st.caption(info[2])
                             done_label = ", ".join(chosen_electives["elective_name"])
                     else:
-                        res = CURRICULUM_RESOURCES.get(resource_key,
-                            CURRICULUM_RESOURCES.get(subject, CURRICULUM_RESOURCES["Electives"]))
+                        _res = resources_for_grade(student_row["grade"])
+                        res = _res.get(resource_key,
+                            _res.get(subject, _res["Electives"]))
                         st.markdown(f"🔗 [{res[0]}]({res[1]})")
                         st.caption(res[2])
                         done_label = res[0]
@@ -5762,7 +5964,7 @@ if not parent_mode:
         if holiday_label:
             st.success(f"🎉 No school today — {holiday_label}")
             return None
-        blocks = WEEKLY_SCHEDULE.get(d.strftime("%A"))
+        blocks = schedule_for_grade(student_row["grade"]).get(d.strftime("%A"))
         if not blocks:
             st.info("No school scheduled on this day. 🎉")
             return None
@@ -5823,10 +6025,9 @@ if not parent_mode:
                                 st.markdown(f"🔗 [{e['elective_name']}]({info[1]})")
                         done_label = ", ".join(ctx["electives"]["elective_name"])
                 else:
-                    res = CURRICULUM_RESOURCES.get(
-                        it["resource_key"],
-                        CURRICULUM_RESOURCES.get(subject,
-                                                 CURRICULUM_RESOURCES["Electives"]))
+                    _res = resources_for_grade(student_row["grade"])
+                    res = _res.get(it["resource_key"],
+                        _res.get(subject, _res["Electives"]))
                     st.markdown(f"🔗 [{res[0]}]({res[1]})")
                     done_label = res[0]
                     if subject == "Reading" and ctx["current_book"] is not None:
@@ -5879,7 +6080,7 @@ if not parent_mode:
                 if holiday:
                     st.caption(f"🎉 {holiday}")
                     continue
-                blocks = WEEKLY_SCHEDULE.get(day.strftime("%A")) or []
+                blocks = schedule_for_grade(student_row["grade"]).get(day.strftime("%A")) or []
                 if not blocks:
                     st.caption("—")
                     continue
@@ -6028,7 +6229,7 @@ if not parent_mode:
         def day_marker(d):
             if holiday_label_for(d):
                 return "🎉"
-            blocks = WEEKLY_SCHEDULE.get(d.strftime("%A"))
+            blocks = schedule_for_grade(student_row["grade"]).get(d.strftime("%A"))
             logged = by_date.get(d.isoformat(), [])
             if not blocks:
                 return "✅" if logged else ""
@@ -6125,12 +6326,13 @@ if not parent_mode:
                      f"({_monday.strftime('%b %d')} – "
                      f"{(_monday + timedelta(days=4)).strftime('%b %d')})")
         st.markdown(QUEST_CARD_CSS, unsafe_allow_html=True)
+        _sched = schedule_for_grade(student_row["grade"])
         _wk_done = sum(
             1 for i in range(5)
-            for b in (WEEKLY_SCHEDULE.get((_monday + timedelta(days=i)).strftime("%A")) or [])
+            for b in (_sched.get((_monday + timedelta(days=i)).strftime("%A")) or [])
             if get_block_entry(student_id, _monday + timedelta(days=i), b[0], b[1]) is not None)
         _wk_total = sum(
-            len(WEEKLY_SCHEDULE.get((_monday + timedelta(days=i)).strftime("%A")) or [])
+            len(_sched.get((_monday + timedelta(days=i)).strftime("%A")) or [])
             for i in range(5))
         if _wk_total:
             st.progress(_wk_done / _wk_total,
@@ -6471,7 +6673,7 @@ else:
             wk = approved[(approved["d"] >= monday) & (approved["d"] <= friday)]
             actual = wk.groupby("subject")["hours"].sum()
             rows = []
-            for s, p in planned_hours_by_subject().items():
+            for s, p in planned_hours_by_subject(student_row["grade"]).items():
                 a = float(actual.get(s, 0.0))
                 stat = "✅" if a >= p else ("⬜" if a == 0 else "🟡")
                 rows.append({"Subject": s, "Planned": p, "Actual": round(a, 2), "": stat})
