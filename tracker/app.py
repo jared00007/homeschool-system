@@ -3061,7 +3061,7 @@ def delete_link_report(report_id):
 
 def get_student_fun_projects(student_id, school_year):
     return pd.read_sql("SELECT * FROM student_fun_projects WHERE student_id = ? "
-                       "AND school_year = ? ORDER BY id", conn,
+                       "AND school_year = ? AND world_key IS NULL ORDER BY id", conn,
                        params=[student_id, school_year])
 
 
@@ -3287,6 +3287,113 @@ def finish_fun_project(project_id, student_id, title, subjects_str, est_hours,
 def delete_student_fun_project(project_id):
     conn.execute("DELETE FROM student_fun_projects WHERE id = ?", (project_id,))
     conn.commit()
+
+
+# ------------------------------------------------ Passion Track adventures (data)
+def get_adventure_worlds():
+    """Active worlds, ordered. Rows: (world_key, name, emoji, color, start_node_key)."""
+    return conn.execute(
+        "SELECT world_key, name, emoji, color, start_node_key FROM adventure_worlds "
+        "WHERE active = 1 ORDER BY sort_order").fetchall()
+
+
+def get_adventure_node(node_key):
+    """One node as a dict (branches parsed, expectations split), or None."""
+    r = conn.execute(
+        "SELECT node_key, world_key, title, icon, subjects, mission, expectations, "
+        "deliverable, est_hours, branches FROM adventure_nodes WHERE node_key = ?",
+        (node_key,)).fetchone()
+    if not r:
+        return None
+    keys = ["node_key", "world_key", "title", "icon", "subjects", "mission",
+            "expectations", "deliverable", "est_hours", "branches"]
+    d = dict(zip(keys, r))
+    d["branches"] = json.loads(cell(d["branches"]) or "[]")
+    d["expects"] = [e for e in cell(d["expectations"]).split("\n") if e.strip()]
+    return d
+
+
+def get_student_adventure_path(student_id, world_key):
+    """A student's trail through one world, ordered by step_index.
+    Rows: (id, node_key, step_index, status, hours_logged, expects_done)."""
+    return conn.execute(
+        "SELECT id, node_key, step_index, status, hours_logged, expects_done "
+        "FROM student_fun_projects WHERE student_id = ? AND world_key = ? "
+        "ORDER BY step_index", (student_id, world_key)).fetchall()
+
+
+def start_adventure_node(student_id, school_year, world_key, node_key, step_index):
+    """Create the student_fun_projects row for a node if it isn't there yet."""
+    ex = conn.execute("SELECT id FROM student_fun_projects WHERE student_id = ? "
+                      "AND world_key = ? AND node_key = ?",
+                      (student_id, world_key, node_key)).fetchone()
+    if ex:
+        return ex[0]
+    n = get_adventure_node(node_key)
+    first_subj = cell(n["subjects"]).split(",")[0].strip() or None
+    conn.execute("""INSERT INTO student_fun_projects
+        (student_id, school_year, title, subject, description, status, selected_date,
+         subjects, steps, est_hours, hours_logged, icon, world_key, node_key,
+         step_index, expects_done)
+        VALUES (?, ?, ?, ?, ?, 'in_progress', ?, ?, ?, ?, 0, ?, ?, ?, ?, '[]')""",
+        (student_id, school_year, n["title"], first_subj, n["mission"],
+         date.today().isoformat(), n["subjects"], n["expectations"],
+         num(n["est_hours"], 2.0), n["icon"], world_key, node_key, step_index))
+    conn.commit()
+    return conn.execute("SELECT id FROM student_fun_projects WHERE student_id = ? "
+                        "AND world_key = ? AND node_key = ?",
+                        (student_id, world_key, node_key)).fetchone()[0]
+
+
+def set_node_expects_done(row_id, done_list):
+    conn.execute("UPDATE student_fun_projects SET expects_done = ? WHERE id = ?",
+                 (json.dumps(done_list), row_id))
+    conn.commit()
+
+
+def finish_adventure_node(row_id, student_id, node, note):
+    """Route completion through the same hour-split engine quests use."""
+    finish_fun_project(row_id, student_id, node["title"], node["subjects"],
+                       num(node["est_hours"], 2.0), note=note)
+
+
+def _adventure_board_svg(n_stops, color, show_flag):
+    """Serpentine board-game trail of the student's path; returns {html, h}."""
+    per, STEP, MX, MY, ROWH, R = 4, 140, 40, 38, 76, 16
+    total = n_stops + (1 if show_flag else 0)
+    rows_ct = max(1, (total + per - 1) // per)
+    H = MY * 2 + (rows_ct - 1) * ROWH
+
+    def pos(i):
+        row, col = i // per, i % per
+        vcol = (per - 1 - col) if row % 2 else col
+        return MX + vcol * STEP, MY + row * ROWH
+
+    cons = nodes = ""
+    for i in range(1, total):
+        ax, ay = pos(i - 1)
+        bx, by = pos(i)
+        cons += (f'<line x1="{ax}" y1="{ay}" x2="{bx}" y2="{by}" stroke="#1A1610" '
+                 f'stroke-width="10" stroke-linecap="round"/>'
+                 f'<line x1="{ax}" y1="{ay}" x2="{bx}" y2="{by}" stroke="{color}" '
+                 f'stroke-width="4" stroke-linecap="round" stroke-dasharray="1 14"/>')
+    for i in range(total):
+        x, y = pos(i)
+        if show_flag and i == total - 1:
+            nodes += (f'<g><circle cx="{x}" cy="{y}" r="{R + 2}" fill="#7BC950" '
+                      f'stroke="#1A1610" stroke-width="3"/><text x="{x}" y="{y + 6}" '
+                      f'font-size="16" text-anchor="middle">🏁</text></g>')
+        else:
+            if (not show_flag) and i == total - 1:
+                nodes += (f'<circle cx="{x}" cy="{y}" r="{R + 6}" fill="none" '
+                          f'stroke="{color}" stroke-width="2.5" stroke-dasharray="3 4"/>')
+            nodes += (f'<circle cx="{x}" cy="{y}" r="{R}" fill="{color}" stroke="#1A1610" '
+                      f'stroke-width="3"/><text x="{x}" y="{y + 5}" font-size="13" '
+                      f'font-weight="900" text-anchor="middle" fill="#1A1610">{i + 1}</text>')
+    html = (f'<div style="text-align:center"><svg viewBox="0 0 620 {H}" width="100%" '
+            f'style="max-width:620px">{cons}{nodes}</svg></div>')
+    return {"html": html, "h": int(H) + 24}
+
 
 
 # ----- Foundations Track -----
@@ -4313,6 +4420,91 @@ def render_passion_intake(student_id, key_prefix):
             st.rerun()
         if has_profile:
             st.success("Locked in — your quests lean toward this now.")
+
+
+def render_adventure(student_id, school_year, key_prefix):
+    """Choose-Your-Adventure Passion Track: pick a world, do the assignment,
+    branch to the next. Completion logs compliance hours via finish_fun_project."""
+    st.subheader("🎢 Choose your adventure")
+    st.caption("Pick a world, do the assignment, then choose where your story goes "
+               "next. Every choice you make banks a different school subject.")
+    worlds = get_adventure_worlds()
+    if not worlds:
+        st.info("No adventures set up yet — a parent can add them.")
+        return
+    wkey = f"{key_prefix}_world"
+    sel = st.session_state.get(wkey)
+    cols = st.columns(len(worlds))
+    for i, w in enumerate(worlds):
+        world_key, name, emoji, color, _ = w
+        if cols[i].button(f"{emoji} {name}", key=f"{key_prefix}_w_{world_key}",
+                          use_container_width=True,
+                          type="primary" if sel == world_key else "secondary"):
+            st.session_state[wkey] = world_key
+            st.rerun()
+    if not sel:
+        st.info("👆 Pick a world to begin your adventure.")
+        return
+    world = next(w for w in worlds if w[0] == sel)
+    world_key, name, emoji, color, start_node_key = world
+
+    path = get_student_adventure_path(student_id, world_key)
+    if not path:
+        start_adventure_node(student_id, school_year, world_key, start_node_key, 0)
+        st.rerun()
+
+    last = path[-1]           # (id, node_key, step_index, status, hours_logged, expects_done)
+    row_id, node_key, step_index, status = last[0], last[1], last[2], last[3]
+    node = get_adventure_node(node_key)
+    show_flag = (status == "finished" and not node["branches"])
+
+    board = _adventure_board_svg(len(path), color, show_flag)
+    components.html(board["html"], height=board["h"])
+    st.markdown(f"### {emoji} {name} — stop {len(path)}")
+
+    if status != "finished":
+        st.markdown(f"#### {cell(node['icon']) or '🎯'} {node['title']}")
+        if cell(node["subjects"]):
+            st.caption("Subjects: " + cell(node["subjects"]).replace(",", " · "))
+        st.markdown(f"**📋 Your mission:** {node['mission']}")
+        st.markdown("**What's expected:**")
+        done = json.loads(cell(last[5]) or "[]")
+        if len(done) != len(node["expects"]):
+            done = [False] * len(node["expects"])
+        new_done = [st.checkbox(e, value=done[i], key=f"{key_prefix}_exp_{row_id}_{i}")
+                    for i, e in enumerate(node["expects"])]
+        if new_done != done:
+            set_node_expects_done(row_id, new_done)
+        st.info(f"🎁 **Turn in:** {node['deliverable']}  ·  ⏱ about "
+                f"{num(node['est_hours'], 2.0):g} hrs")
+        note = st.text_area("✍ What did you actually do? (your proof of work)",
+                            key=f"{key_prefix}_note_{row_id}")
+        if st.button("✅ I finished this assignment", type="primary",
+                     key=f"{key_prefix}_fin_{row_id}"):
+            finish_adventure_node(row_id, student_id, node, note)
+            st.rerun()
+    elif node["branches"]:
+        st.markdown("#### 🧭 Nice work! Where does your adventure go next?")
+        for b in node["branches"]:
+            if st.button(f"➡ {b['label']} — {b.get('teaser', '')}",
+                         key=f"{key_prefix}_br_{row_id}_{b['to']}",
+                         use_container_width=True):
+                start_adventure_node(student_id, school_year, world_key, b["to"],
+                                     step_index + 1)
+                st.rerun()
+    else:
+        subs = set()
+        for r in path:
+            nd = get_adventure_node(r[1])
+            for s in cell(nd["subjects"]).split(","):
+                if s.strip():
+                    subs.add(s.strip())
+        st.success(f"🎉 Adventure complete! {len(path)} projects finished.")
+        st.markdown("**Look what you covered — without opening a textbook:**")
+        st.markdown("  ".join(f"`{s}`" for s in sorted(subs)))
+        if st.button("↺ Start a different adventure", key=f"{key_prefix}_restart"):
+            st.session_state[wkey] = None
+            st.rerun()
 
 
 def render_fun_projects_picker(student_id, school_year, key_prefix):
@@ -6319,7 +6511,7 @@ with st.sidebar:
 
         _nav_group("📅 Schedule & Quests", [
             ("Today", "📅"), ("My Plan", "🧭"), ("My Week", "🗓"), ("Calendar", "📆"),
-            ("Passion Track", "🗺️")],
+            ("Passion Track", "🗺️"), ("Adventures", "🎢")],
             "nav_schedule", "student_view")
         _nav_group("🎯 Learning", [
             ("Foundations", "🧭"), ("Electives & Books", "🎯"), ("Quizzes", "📝"),
@@ -6969,6 +7161,9 @@ if not parent_mode:
     elif st.session_state.student_view == "Grade Scope":
         render_scope_reference(student_row["grade"])
 
+    elif st.session_state.student_view == "Adventures":
+        school_year = student_row["school_year"] or "current"
+        render_adventure(student_id, school_year, "adv")
     elif st.session_state.student_view == "Passion Track":
         school_year = student_row["school_year"] or "current"
         render_fun_projects_picker(student_id, school_year, key_prefix="stu")
