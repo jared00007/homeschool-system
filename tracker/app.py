@@ -3403,42 +3403,33 @@ def finish_adventure_node(row_id, student_id, node, note):
                        num(node["est_hours"], 2.0), note=note)
 
 
-def _adventure_board_svg(n_stops, color, show_flag):
-    """Serpentine board-game trail of the student's path; returns {html, h}."""
-    per, STEP, MX, MY, ROWH, R = 4, 140, 40, 38, 76, 16
-    total = n_stops + (1 if show_flag else 0)
-    rows_ct = max(1, (total + per - 1) // per)
-    H = MY * 2 + (rows_ct - 1) * ROWH
-
-    def pos(i):
-        row, col = i // per, i % per
-        vcol = (per - 1 - col) if row % 2 else col
-        return MX + vcol * STEP, MY + row * ROWH
-
-    cons = nodes = ""
-    for i in range(1, total):
-        ax, ay = pos(i - 1)
-        bx, by = pos(i)
-        cons += (f'<line x1="{ax}" y1="{ay}" x2="{bx}" y2="{by}" stroke="#1A1610" '
-                 f'stroke-width="10" stroke-linecap="round"/>'
-                 f'<line x1="{ax}" y1="{ay}" x2="{bx}" y2="{by}" stroke="{color}" '
-                 f'stroke-width="4" stroke-linecap="round" stroke-dasharray="1 14"/>')
-    for i in range(total):
-        x, y = pos(i)
-        if show_flag and i == total - 1:
-            nodes += (f'<g><circle cx="{x}" cy="{y}" r="{R + 2}" fill="#7BC950" '
-                      f'stroke="#1A1610" stroke-width="3"/><text x="{x}" y="{y + 6}" '
-                      f'font-size="16" text-anchor="middle">🏁</text></g>')
-        else:
-            if (not show_flag) and i == total - 1:
-                nodes += (f'<circle cx="{x}" cy="{y}" r="{R + 6}" fill="none" '
-                          f'stroke="{color}" stroke-width="2.5" stroke-dasharray="3 4"/>')
-            nodes += (f'<circle cx="{x}" cy="{y}" r="{R}" fill="{color}" stroke="#1A1610" '
-                      f'stroke-width="3"/><text x="{x}" y="{y + 5}" font-size="13" '
-                      f'font-weight="900" text-anchor="middle" fill="#1A1610">{i + 1}</text>')
-    html = (f'<div style="text-align:center"><svg viewBox="0 0 620 {H}" width="100%" '
-            f'style="max-width:620px">{cons}{nodes}</svg></div>')
-    return {"html": html, "h": int(H) + 24}
+def _adventure_board_svg(done_phases, current_phase, color, finished_all):
+    """The 4-stop phase board: Start / Build / Level Up / Showcase."""
+    W, R, MY = 560, 19, 34
+    step = (W - 120) / 3.0
+    xat = lambda i: 60 + i * step
+    cons = nodes = labels = ""
+    for i in range(1, 4):
+        cons += (f'<line x1="{xat(i-1)}" y1="{MY}" x2="{xat(i)}" y2="{MY}" '
+                 f'stroke="#1A1610" stroke-width="9" stroke-linecap="round"/>')
+    for i in range(4):
+        x, ph = xat(i), i + 1
+        done = finished_all or (ph in done_phases)
+        cur = (not finished_all) and ph == current_phase
+        fill = color if (done or cur) else "#E6DCC8"
+        if cur:
+            nodes += (f'<circle cx="{x}" cy="{MY}" r="{R+6}" fill="none" stroke="{color}" '
+                      f'stroke-width="2.5" stroke-dasharray="3 4"/>')
+        nodes += (f'<circle cx="{x}" cy="{MY}" r="{R}" fill="{fill}" stroke="#1A1610" '
+                  f'stroke-width="3"/>')
+        inner = "\u2713" if done else str(ph)
+        nodes += (f'<text x="{x}" y="{MY+5}" font-size="15" font-weight="900" '
+                  f'text-anchor="middle" fill="#1A1610">{inner}</text>')
+        labels += (f'<text x="{x}" y="{MY+38}" font-size="11" font-weight="800" '
+                   f'text-anchor="middle" fill="#7a715c">{PHASE_NAMES[i]}</text>')
+    html = (f'<div style="text-align:center"><svg viewBox="0 0 {W} 74" width="100%" '
+            f'style="max-width:{W}px">{cons}{nodes}{labels}</svg></div>')
+    return {"html": html, "h": 92}
 
 
 def get_adventure_worlds_df():
@@ -3474,25 +3465,25 @@ def delete_adventure_world(world_key):
 
 
 def add_adventure_node(node_key, world_key, title, icon, subjects, mission,
-                       expectations, deliverable, est_hours, branches):
+                       expectations, deliverable, est_hours, phase):
     nxt = conn.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM adventure_nodes "
                        "WHERE world_key = ?", (world_key,)).fetchone()[0]
     conn.execute("""INSERT INTO adventure_nodes
         (node_key, world_key, title, icon, subjects, mission, expectations,
-         deliverable, est_hours, branches, sort_order, active)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+         deliverable, est_hours, branches, phase, sort_order, active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, \'[]\', ?, ?, 1)""",
         (node_key, world_key, title, icon, subjects, mission, expectations,
-         deliverable, est_hours, json.dumps(branches), nxt))
+         deliverable, est_hours, phase, nxt))
     conn.commit()
 
 
 def update_adventure_node(node_key, title, icon, subjects, mission, expectations,
-                          deliverable, est_hours, branches):
+                          deliverable, est_hours, phase):
     conn.execute("""UPDATE adventure_nodes SET title = ?, icon = ?, subjects = ?,
-        mission = ?, expectations = ?, deliverable = ?, est_hours = ?, branches = ?
+        mission = ?, expectations = ?, deliverable = ?, est_hours = ?, phase = ?
         WHERE node_key = ?""",
         (title, icon, subjects, mission, expectations, deliverable, est_hours,
-         json.dumps(branches), node_key))
+         phase, node_key))
     conn.commit()
 
 
@@ -4643,14 +4634,15 @@ def render_home_feed(student_id, school_year, student_row):
 
 
 def render_adventure(student_id, school_year, key_prefix):
-    """Choose-Your-Adventure Passion Track: pick a world, do the assignment,
-    branch to the next. Completion logs compliance hours via finish_fun_project."""
-    st.subheader("🎢 Choose your adventure")
-    st.caption("Pick a world, do the assignment, then choose where your story goes "
-               "next. Every choice you make banks a different school subject.")
+    """Choose-Your-Adventure Passion Track, run as a 4-phase arc (Start, Build,
+    Level Up, Showcase). Each phase is a small pool; the student picks one.
+    Completion logs compliance hours via finish_fun_project."""
+    st.subheader("\U0001F3A2 Choose your adventure")
+    st.caption("Pick a world, then take it through 4 phases \u2014 Start, Build, "
+               "Level Up, Showcase. Every choice banks a different school subject.")
     worlds = get_adventure_worlds()
     if not worlds:
-        st.info("No adventures set up yet — a parent can add them.")
+        st.info("No adventures set up yet \u2014 a parent can add them.")
         return
     wkey = f"{key_prefix}_world"
     sel = st.session_state.get(wkey)
@@ -4663,30 +4655,58 @@ def render_adventure(student_id, school_year, key_prefix):
             st.session_state[wkey] = world_key
             st.rerun()
     if not sel:
-        st.info("👆 Pick a world to begin your adventure.")
+        st.info("\U0001F446 Pick a world to begin your adventure.")
         return
     world = next(w for w in worlds if w[0] == sel)
-    world_key, name, emoji, color, start_node_key = world
+    world_key, name, emoji, color, _ = world
 
     path = get_student_adventure_path(student_id, world_key)
-    if not path:
-        start_adventure_node(student_id, school_year, world_key, start_node_key, 0)
-        st.rerun()
+    done_phases = {r[2] + 1 for r in path if r[3] == "finished"}
 
-    last = path[-1]           # (id, node_key, step_index, status, hours_logged, expects_done)
+    if not path:
+        pool1 = get_adventure_phase_nodes(world_key, 1)
+        if not pool1:
+            st.warning("This world has no Phase 1 assignment yet.")
+            return
+        if len(pool1) == 1:
+            start_adventure_node(student_id, school_year, world_key,
+                                 pool1[0]["node_key"], 0)
+            st.rerun()
+        b = _adventure_board_svg(done_phases, 1, color, False)
+        components.html(b["html"], height=b["h"])
+        st.markdown(f"### {emoji} {name} \u2014 Phase 1/4 \u00b7 {PHASE_NAMES[0]}")
+        _adventure_choose(student_id, school_year, world_key, 1, pool1, key_prefix)
+        return
+
+    last = path[-1]
     row_id, node_key, step_index, status = last[0], last[1], last[2], last[3]
     node = get_adventure_node(node_key)
-    show_flag = (status == "finished" and not node["branches"])
+    cur_phase = step_index + 1
+    finished_all = (status == "finished" and cur_phase >= 4)
 
-    board = _adventure_board_svg(len(path), color, show_flag)
-    components.html(board["html"], height=board["h"])
-    st.markdown(f"### {emoji} {name} — stop {len(path)}")
+    b = _adventure_board_svg(done_phases, cur_phase, color, finished_all)
+    components.html(b["html"], height=b["h"])
+
+    if finished_all:
+        subs = sorted({s.strip() for r in path for s in
+                       cell(get_adventure_node(r[1])["subjects"]).split(",") if s.strip()})
+        st.success(f"\U0001F389 Adventure complete! You ran all 4 phases of "
+                   f"{emoji} {name}.")
+        st.markdown("**Look what you covered \u2014 without opening a textbook:**")
+        st.markdown("  ".join(f"`{s}`" for s in subs))
+        if st.button("\u21ba Try a different adventure", key=f"{key_prefix}_restart"):
+            st.session_state[wkey] = None
+            st.rerun()
+        return
+
+    st.markdown(f"### {emoji} {name} \u2014 Phase {cur_phase}/4 \u00b7 {PHASE_NAMES[cur_phase-1]}")
 
     if status != "finished":
-        st.markdown(f"#### {cell(node['icon']) or '🎯'} {node['title']}")
+        _nic = cell(node['icon']) or "🎯"
+        st.markdown(f"#### {_nic} {node['title']}")
         if cell(node["subjects"]):
-            st.caption("Subjects: " + cell(node["subjects"]).replace(",", " · "))
-        st.markdown(f"**📋 Your mission:** {node['mission']}")
+            st.caption("Subjects: " + cell(node["subjects"]).replace(",", " \u00b7 "))
+        st.markdown(f"**\U0001F4CB Your mission:** {node['mission']}")
         st.markdown("**What's expected:**")
         done = json.loads(cell(last[5]) or "[]")
         if len(done) != len(node["expects"]):
@@ -4695,48 +4715,50 @@ def render_adventure(student_id, school_year, key_prefix):
                     for i, e in enumerate(node["expects"])]
         if new_done != done:
             set_node_expects_done(row_id, new_done)
-        st.info(f"🎁 **Turn in:** {node['deliverable']}  ·  ⏱ about "
+        st.info(f"\U0001F381 **Turn in:** {node['deliverable']}  \u00b7  \u23f1 about "
                 f"{num(node['est_hours'], 2.0):g} hrs")
-        note = st.text_area("✍ What did you actually do? (your proof of work)",
+        note = st.text_area("\u270d What did you actually do? (your proof of work)",
                             key=f"{key_prefix}_note_{row_id}")
-        if st.button("✅ I finished this assignment", type="primary",
+        if st.button("\u2705 I finished this assignment", type="primary",
                      key=f"{key_prefix}_fin_{row_id}"):
             finish_adventure_node(row_id, student_id, node, note)
             st.rerun()
-    elif node["branches"]:
-        st.markdown("#### 🧭 Nice work! Where does your adventure go next?")
-        for b in node["branches"]:
-            if st.button(f"➡ {b['label']} — {b.get('teaser', '')}",
-                         key=f"{key_prefix}_br_{row_id}_{b['to']}",
-                         use_container_width=True):
-                start_adventure_node(student_id, school_year, world_key, b["to"],
-                                     step_index + 1)
-                st.rerun()
     else:
-        subs = set()
-        for r in path:
-            nd = get_adventure_node(r[1])
-            for s in cell(nd["subjects"]).split(","):
-                if s.strip():
-                    subs.add(s.strip())
-        st.success(f"🎉 Adventure complete! {len(path)} projects finished.")
-        st.markdown("**Look what you covered — without opening a textbook:**")
-        st.markdown("  ".join(f"`{s}`" for s in sorted(subs)))
-        if st.button("↺ Start a different adventure", key=f"{key_prefix}_restart"):
-            st.session_state[wkey] = None
+        nxt = cur_phase + 1
+        st.markdown(f"#### \U0001F9ED Phase {nxt}: {PHASE_NAMES[nxt-1]} \u2014 choose your next quest")
+        _adventure_choose(student_id, school_year, world_key, nxt,
+                          get_adventure_phase_nodes(world_key, nxt), key_prefix)
+
+
+def _adventure_choose(student_id, school_year, world_key, phase, pool, key_prefix):
+    """Render a phase's option pool as pick-one buttons."""
+    if not pool:
+        st.warning(f"No Phase {phase} assignment set up yet \u2014 ask a parent.")
+        return
+    for nd in pool:
+        subj = cell(nd["subjects"]).replace(",", " \u00b7 ")
+        if st.button(f"{cell(nd['icon'])} {nd['title']}  \u2014  {subj}",
+                     key=f"{key_prefix}_pick_{nd['node_key']}",
+                     use_container_width=True):
+            start_adventure_node(student_id, school_year, world_key,
+                                 nd["node_key"], phase - 1)
             st.rerun()
 
 
 def _adventure_node_form(world_key, node_opts, nd):
-    """Add (nd=None) or edit one assignment node, including its branches."""
+    """Add (nd=None) or edit one assignment node, with its phase."""
     is_edit = nd is not None
     pfx = nd["node_key"] if is_edit else f"new_{world_key}"
     with st.form(f"advnodeform_{pfx}", clear_on_submit=not is_edit):
         title = st.text_input("Title", value=(nd["title"] if is_edit else ""))
-        c1, c2 = st.columns([1, 1])
-        icon = c1.text_input("Icon (emoji)", value=(cell(nd["icon"]) if is_edit else "🎯"))
+        c1, c2, c3 = st.columns([1, 1, 1])
+        icon = c1.text_input("Icon (emoji)", value=(cell(nd["icon"]) if is_edit else "\U0001F3AF"))
         est = c2.number_input("Est. hours", 0.5, 20.0, step=0.5,
                               value=(num(nd["est_hours"], 2.0) if is_edit else 2.0))
+        ph_def = int(nd["phase"]) if (is_edit and str(nd["phase"]).strip() not in ("", "None")) else 1
+        phase_sel = c3.selectbox("Phase", [1, 2, 3, 4], index=ph_def - 1,
+                                 format_func=lambda i: f"{i} \u00b7 {PHASE_NAMES[i-1]}",
+                                 key=f"advphase_{pfx}")
         cur_subs = [s.strip() for s in cell(nd["subjects"]).split(",") if s.strip()] if is_edit else []
         cur_subs = [s for s in cur_subs if s in WA_SUBJECTS]
         subs = st.multiselect("Subjects (these are the hours that get logged)",
@@ -4747,44 +4769,26 @@ def _adventure_node_form(world_key, node_opts, nd):
                               value=(cell(nd["expectations"]) if is_edit else ""))
         deliverable = st.text_input("Turn in - the deliverable / proof of work",
                                     value=(cell(nd["deliverable"]) if is_edit else ""))
-        st.markdown("**Where can they go next? (up to 3 branches)**")
-        existing = json.loads(cell(nd["branches"]) or "[]") if is_edit else []
-        target_keys = [k for k in node_opts if not (is_edit and k == nd["node_key"])]
-        opts = ["— none —"] + target_keys
-        fmt = lambda k: "— none —" if k == "— none —" else node_opts.get(k, k)
-        picks = []
-        for i in range(3):
-            ex = existing[i] if i < len(existing) else {}
-            bc1, bc2 = st.columns([2, 3])
-            ti = opts.index(ex["to"]) if ex.get("to") in opts else 0
-            tgt = bc1.selectbox(f"Next #{i + 1}", opts, index=ti, format_func=fmt,
-                                key=f"advbr_{pfx}_{i}_to")
-            lbl = bc2.text_input(f"Choice label #{i + 1}", value=ex.get("label", ""),
-                                 key=f"advbr_{pfx}_{i}_lbl")
-            picks.append((tgt, lbl, ex.get("teaser", "")))
         saved = st.form_submit_button("Save assignment" if is_edit else "Add assignment",
                                       type="primary")
     if saved and title.strip():
-        branches = [{"label": (l.strip() or node_opts.get(t, "")), "teaser": tz, "to": t}
-                    for (t, l, tz) in picks if t != "— none —"]
         subj_str = ",".join(subs)
         if is_edit:
             update_adventure_node(nd["node_key"], title.strip(), icon.strip(), subj_str,
                                   mission.strip(), expects.strip(), deliverable.strip(),
-                                  est, branches)
+                                  est, phase_sel)
         else:
             nk = f"{world_key}-{int(time.time() * 1000)}"
             add_adventure_node(nk, world_key, title.strip(), icon.strip(), subj_str,
                                mission.strip(), expects.strip(), deliverable.strip(),
-                               est, branches)
-            w = conn.execute("SELECT start_node_key FROM adventure_worlds "
-                             "WHERE world_key = ?", (world_key,)).fetchone()
-            if not (w and cell(w[0])):
-                conn.execute("UPDATE adventure_worlds SET start_node_key = ? "
-                             "WHERE world_key = ?", (nk, world_key))
+                               est, phase_sel)
+            if phase_sel == 1:
+                conn.execute("UPDATE adventure_worlds SET start_node_key = ? WHERE "
+                             "world_key = ? AND (start_node_key IS NULL OR start_node_key = \'\')",
+                             (nk, world_key))
                 conn.commit()
         st.rerun()
-    if is_edit and st.button("🗑 Delete this assignment",
+    if is_edit and st.button("\U0001F5D1 Delete this assignment",
                              key=f"advdel_{nd['node_key']}"):
         delete_adventure_node(nd["node_key"])
         st.rerun()
@@ -4846,7 +4850,8 @@ def render_adventure_admin():
         st.info("No assignments yet - add one below.")
     for _, nd in nodes.iterrows():
         is_start = cell(nd["node_key"]) == cell(world["start_node_key"])
-        with st.expander(f"{cell(nd['icon'])} {nd['title']}" + ("  ⭐ start" if is_start else "")):
+        _ph = int(nd["phase"]) if str(nd["phase"]).strip() not in ("", "None") else 1
+        with st.expander(f"{cell(nd['icon'])} {nd['title']}  ·  P{_ph} {PHASE_NAMES[_ph-1]}" + ("  ⭐ start" if is_start else "")):
             _adventure_node_form(world_key, node_opts, nd)
 
     with st.expander("➕ New assignment"):
