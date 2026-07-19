@@ -6092,6 +6092,47 @@ with st.sidebar:
 
 parent_mode = (mode == "🔑 Parent")
 
+
+def _apply_paste_block(active):
+    """Disable copy / cut / paste / right-click across the whole page when in
+    the student view — a friction layer so a quiz question can't be copied out
+    to an AI tool and an answer can't be pasted back in without retyping it.
+
+    Honest scope: a speed bump, not a wall. It stops the effortless
+    copy-question -> paste-answer loop (how most casual cheating happens); it
+    does NOT stop a kid who retypes into AI on a phone or screenshots. The hard
+    block is the device/network layer (see docs/ANTI_CHEAT_DEVICE_NETWORK_SETUP).
+
+    components.html renders in a same-origin iframe, so window.parent reaches
+    the real Streamlit document. The listener is installed once and gated by a
+    flag we re-set every rerun, so flipping to Parent mode (active=False) lifts
+    the block without needing a page reload."""
+    flag = "true" if active else "false"
+    components.html(
+        """
+        <script>
+        (function(){
+          var doc = window.parent && window.parent.document;
+          if(!doc) return;
+          doc.__compassBlock = __FLAG__;
+          if(!doc.__compassPasteInit){
+            doc.__compassPasteInit = true;
+            var stop = function(e){
+              if(doc.__compassBlock){ e.stopPropagation(); e.preventDefault(); return false; }
+            };
+            ["copy","cut","paste","contextmenu"].forEach(function(evt){
+              doc.addEventListener(evt, stop, true);
+            });
+          }
+        })();
+        </script>
+        """.replace("__FLAG__", flag),
+        height=0,
+    )
+
+
+_apply_paste_block(not parent_mode)
+
 # =========================================================== STUDENT MODE
 if not parent_mode:
     if student_id is None:
