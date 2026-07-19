@@ -1815,12 +1815,13 @@ INTEREST_OPTIONS = [
 
 
 # ---------------------------------------------------- Passion Track adventures
-# "Choose Your Adventure": worlds -> branching assignment nodes. Stored as data
-# (seeded into adventure_worlds / adventure_nodes) so new worlds, assignments,
-# and branches are content, not code. Each node's `subjects` are real WA_SUBJECTS
-# so completion attributes compliance hours via finish_fun_project, exactly like
-# a quest. `branches` point to other nodes by node_key; [] means a leaf (an arm
-# of the adventure ends there).
+# "Choose Your Adventure": each world runs a fixed 4-phase arc (see PHASE_NAMES).
+# Every assignment node carries a `phase` (1-4); a phase is a small pool the
+# student picks one option from. Stored as data (adventure_worlds /
+# adventure_nodes) so new worlds, phases, and assignments are content, not code.
+# Each node's `subjects` are real WA_SUBJECTS, so completion attributes
+# compliance hours via finish_fun_project, exactly like a quest. (The legacy
+# `branches` column is retained but unused by the phase flow.)
 ADVENTURE_WORLDS = [
     {"key": "forge",  "name": "Maker's Forge", "emoji": "⚙️", "color": "#FF6B4A", "start": "f1"},
     {"key": "studio", "name": "Story Studio",  "emoji": "🎬",   "color": "#6C7BF0", "start": "s1"},
@@ -4711,12 +4712,20 @@ def render_adventure(student_id, school_year, key_prefix):
     cur_phase = step_index + 1
     finished_all = (status == "finished" and cur_phase >= 4)
 
+    if status != "finished" and node is None:
+        st.info("That assignment was changed by a parent \u2014 pick a fresh one "
+                "for this phase.")
+        conn.execute("DELETE FROM student_fun_projects WHERE id = ?", (row_id,))
+        conn.commit()
+        st.rerun()
+
     b = _adventure_board_svg(done_phases, cur_phase, color, finished_all)
     components.html(b["html"], height=b["h"])
 
     if finished_all:
-        subs = sorted({s.strip() for r in path for s in
-                       cell(get_adventure_node(r[1])["subjects"]).split(",") if s.strip()})
+        subs = sorted({s.strip() for r in path
+                       for _nd in [get_adventure_node(r[1])] if _nd
+                       for s in cell(_nd["subjects"]).split(",") if s.strip()})
         st.success(f"\U0001F389 Adventure complete! You ran all 4 phases of "
                    f"{emoji} {name}.")
         st.markdown("**Look what you covered \u2014 without opening a textbook:**")
