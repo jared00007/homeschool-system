@@ -4538,6 +4538,24 @@ def _today_counts(student_id, student_row):
     return done, len(blocks), None, nxt
 
 
+def _current_streak(student_id):
+    """Consecutive days (ending today, or yesterday as grace) with any logged work."""
+    df = get_entries(student_id)
+    if df.empty:
+        return 0
+    days = {str(x) for x in df["entry_date"]}
+    start = date.today()
+    if start.isoformat() not in days:
+        start = start - timedelta(days=1)
+    if start.isoformat() not in days:
+        return 0
+    n, d = 0, start
+    while d.isoformat() in days:
+        n += 1
+        d -= timedelta(days=1)
+    return n
+
+
 def _jump(view, key, label, primary=False, world=None):
     if st.button(label, key=key, use_container_width=True,
                  type="primary" if primary else "secondary"):
@@ -4571,6 +4589,15 @@ def render_home_feed(student_id, school_year, student_row):
     Every card routes into an existing view; nothing here is new content."""
     st.markdown(HOME_CARD_CSS, unsafe_allow_html=True)
     st.caption("Here's what's up today. Tap into anything.")
+    _streak = _current_streak(student_id)
+    if _streak > 0:
+        st.markdown(
+            f'<span style="display:inline-block;background:#FFD23F;border:2.5px solid #1A1610;'
+            f'border-radius:20px;padding:4px 14px;font-weight:800;color:#1A1610;'
+            f'box-shadow:2px 2px 0 #1A1610">\U0001F525 {_streak}-day streak</span>',
+            unsafe_allow_html=True)
+    else:
+        st.caption("Do something today to start a \U0001F525 streak!")
 
     done, total, holiday, nxt = _today_counts(student_id, student_row)
     with st.container(key="hc_today"):
