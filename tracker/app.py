@@ -4482,6 +4482,100 @@ def render_passion_intake(student_id, key_prefix):
             st.success("Locked in — your quests lean toward this now.")
 
 
+def _today_counts(student_id, student_row):
+    """(done, total, holiday_label, next_block) for today's schedule — feeds the
+    Home 'Today' card without rendering the full board."""
+    sy = cell(student_row["school_year"]) or "current"
+    d = date.today()
+    holiday = get_holiday_for_date(sy, d)
+    if holiday:
+        return 0, 0, holiday, None
+    blocks = schedule_for_grade(student_row["grade"]).get(d.strftime("%A")) or []
+    done, nxt = 0, None
+    for b in blocks:
+        subject, start = b[0], b[1]
+        if get_block_entry(student_id, d, subject, start) is not None:
+            done += 1
+        elif nxt is None:
+            nxt = (subject, start)
+    return done, len(blocks), None, nxt
+
+
+def _jump(view, key, label, primary=False, world=None):
+    if st.button(label, key=key, use_container_width=True,
+                 type="primary" if primary else "secondary"):
+        if world is not None:
+            st.session_state["adv_world"] = world
+        st.session_state.student_view = view
+        st.rerun()
+
+
+def render_home_feed(student_id, school_year, student_row):
+    """The student home: surfaces what to do now, in order — today's work,
+    the current adventure, this week's life skill, quick jumps, the debrief.
+    Every card routes into an existing view; nothing here is new content."""
+    st.caption("Here's what's up today. Tap into anything.")
+
+    done, total, holiday, nxt = _today_counts(student_id, student_row)
+    with st.container(border=True):
+        if holiday:
+            st.markdown(f"#### 📅 Today\n🎉 No school — {holiday}")
+        elif total == 0:
+            st.markdown("#### 📅 Today\nNothing scheduled today. 🎉")
+        else:
+            st.markdown(f"#### 📅 Today — {done}/{total} blocks done")
+            st.progress(done / total if total else 0.0)
+            if nxt:
+                when = format_time12(nxt[1]) if nxt[1] else ""
+                st.caption(f"Next up: {QUEST_TITLES.get(nxt[0], nxt[0])} · {when}")
+        _jump("Today", "home_today", "Jump into Today →", primary=True)
+
+    adv = conn.execute(
+        "SELECT world_key, node_key, title FROM student_fun_projects WHERE "
+        "student_id = ? AND world_key IS NOT NULL AND status != 'finished' "
+        "ORDER BY step_index DESC, id DESC LIMIT 1", (student_id,)).fetchone()
+    with st.container(border=True):
+        if adv:
+            wr = conn.execute("SELECT emoji, name FROM adventure_worlds WHERE "
+                              "world_key = ?", (adv[0],)).fetchone()
+            wlabel = f"{cell(wr[0])} {wr[1]}" if wr else "Adventure"
+            st.markdown(f"#### 🎢 Continue your adventure\n"
+                        f"**{adv[2]}** · {wlabel}")
+            _jump("Adventures", "home_adv", "Pick up where you left off →",
+                  primary=True, world=adv[0])
+        else:
+            st.markdown("#### 🎢 Adventures\n"
+                        "Start a project built around what you love.")
+            _jump("Adventures", "home_adv0", "Start an adventure →")
+
+    fdf = get_student_foundations(student_id)
+    pick = None
+    if not fdf.empty:
+        inc = fdf[fdf["prog_status"] != "complete"]
+        if not inc.empty:
+            pick = inc.iloc[0]
+    with st.container(border=True):
+        if pick is not None:
+            st.markdown(f"#### 🧭 This week's life skill\n**{pick['title']}**")
+        else:
+            st.markdown("#### 🧭 Life skills\n"
+                        "Real-world skills — money, cooking, adulting.")
+        _jump("Foundations", "home_found", "Go to Life Skills →")
+
+    st.markdown("##### Quick jump")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        _jump("My Grades", "home_grades", "🏆 Grades")
+    with c2:
+        _jump("Quizzes", "home_quiz", "📝 Quizzes")
+    with c3:
+        _jump("Travel Log", "home_travel", "🧳 Travel")
+
+    with st.container(border=True):
+        st.markdown("#### ⚡ End your day\nTwo taps: how are you, and how'd it go?")
+        _jump("Today", "home_debrief", "Daily Debrief →")
+
+
 def render_adventure(student_id, school_year, key_prefix):
     """Choose-Your-Adventure Passion Track: pick a world, do the assignment,
     branch to the next. Completion logs compliance hours via finish_fun_project."""
@@ -6693,22 +6787,20 @@ with st.sidebar:
 
     if mode == "🎒 Student":
         if "student_view" not in st.session_state:
-            st.session_state.student_view = "Today"
+            st.session_state.student_view = "Home"
 
-        _nav_group("📅 Schedule & Quests", [
-            ("Today", "📅"), ("My Plan", "🧭"), ("My Week", "🗓"), ("Calendar", "📆"),
-            ("Passion Track", "🗺️"), ("Adventures", "🎢")],
-            "nav_schedule", "student_view")
-        _nav_group("🎯 Learning", [
-            ("Foundations", "🧭"), ("Electives & Books", "🎯"), ("Quizzes", "📝"),
-            ("My Grades", "🏆")],
-            "nav_learning", "student_view")
-        _nav_group("🧳 Extras", [
-            ("Travel Log", "🧳"), ("Resources", "📎")],
-            "nav_extras", "student_view")
-        _nav_group("⋯ More", [
-            ("Day 1 Checklist", "🚀"), ("Grade Scope", "📋"), ("My Logins", "🔑")],
-            "nav_more", "student_view")
+        _nav_group("Start here", [("Home", "🏠")], "nav_home", "student_view")
+        _nav_group("✅ Do", [
+            ("Today", "📅"), ("My Week", "🗓"), ("Calendar", "📆"), ("My Plan", "🧭")],
+            "nav_do", "student_view")
+        _nav_group("🧭 Explore", [
+            ("Adventures", "🎢"), ("Passion Track", "🗺️"), ("Foundations", "🧭"),
+            ("Electives & Books", "🎯"), ("Travel Log", "🧳"), ("Resources", "📎")],
+            "nav_explore", "student_view")
+        _nav_group("🙂 Me", [
+            ("My Grades", "🏆"), ("Quizzes", "📝"), ("My Logins", "🔑"),
+            ("Day 1 Checklist", "🚀"), ("Grade Scope", "📋")],
+            "nav_me", "student_view")
 
     if mode == "🔑 Parent":
         if "parent_view" not in st.session_state:
@@ -7058,7 +7150,10 @@ if not parent_mode:
                     if res:
                         st.caption(f"🔗 [{res[0]}]({res[1]})")
 
-    if st.session_state.student_view == "Day 1 Checklist":
+    if st.session_state.student_view == "Home":
+        school_year = student_row["school_year"] or "current"
+        render_home_feed(student_id, school_year, student_row)
+    elif st.session_state.student_view == "Day 1 Checklist":
         school_year = student_row["school_year"] or "current"
         render_day1_checklist(student_id, school_year)
 
