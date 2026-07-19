@@ -3395,6 +3395,66 @@ def _adventure_board_svg(n_stops, color, show_flag):
     return {"html": html, "h": int(H) + 24}
 
 
+def get_adventure_worlds_df():
+    return pd.read_sql("SELECT * FROM adventure_worlds ORDER BY sort_order", conn)
+
+
+def get_adventure_nodes_df(world_key):
+    return pd.read_sql("SELECT * FROM adventure_nodes WHERE world_key = ? "
+                       "ORDER BY sort_order", conn, params=[world_key])
+
+
+def add_adventure_world(world_key, name, emoji, color, start_node_key):
+    nxt = conn.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 "
+                       "FROM adventure_worlds").fetchone()[0]
+    conn.execute("""INSERT INTO adventure_worlds
+        (world_key, name, emoji, color, start_node_key, sort_order, active)
+        VALUES (?, ?, ?, ?, ?, ?, 1)""",
+        (world_key, name, emoji, color, start_node_key, nxt))
+    conn.commit()
+
+
+def update_adventure_world(world_key, name, emoji, color, start_node_key):
+    conn.execute("""UPDATE adventure_worlds SET name = ?, emoji = ?, color = ?,
+        start_node_key = ? WHERE world_key = ?""",
+        (name, emoji, color, start_node_key, world_key))
+    conn.commit()
+
+
+def delete_adventure_world(world_key):
+    conn.execute("DELETE FROM adventure_nodes WHERE world_key = ?", (world_key,))
+    conn.execute("DELETE FROM adventure_worlds WHERE world_key = ?", (world_key,))
+    conn.commit()
+
+
+def add_adventure_node(node_key, world_key, title, icon, subjects, mission,
+                       expectations, deliverable, est_hours, branches):
+    nxt = conn.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM adventure_nodes "
+                       "WHERE world_key = ?", (world_key,)).fetchone()[0]
+    conn.execute("""INSERT INTO adventure_nodes
+        (node_key, world_key, title, icon, subjects, mission, expectations,
+         deliverable, est_hours, branches, sort_order, active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)""",
+        (node_key, world_key, title, icon, subjects, mission, expectations,
+         deliverable, est_hours, json.dumps(branches), nxt))
+    conn.commit()
+
+
+def update_adventure_node(node_key, title, icon, subjects, mission, expectations,
+                          deliverable, est_hours, branches):
+    conn.execute("""UPDATE adventure_nodes SET title = ?, icon = ?, subjects = ?,
+        mission = ?, expectations = ?, deliverable = ?, est_hours = ?, branches = ?
+        WHERE node_key = ?""",
+        (title, icon, subjects, mission, expectations, deliverable, est_hours,
+         json.dumps(branches), node_key))
+    conn.commit()
+
+
+def delete_adventure_node(node_key):
+    conn.execute("DELETE FROM adventure_nodes WHERE node_key = ?", (node_key,))
+    conn.commit()
+
+
 
 # ----- Foundations Track -----
 def get_foundations_modules_df(active_only=True):
@@ -4505,6 +4565,132 @@ def render_adventure(student_id, school_year, key_prefix):
         if st.button("↺ Start a different adventure", key=f"{key_prefix}_restart"):
             st.session_state[wkey] = None
             st.rerun()
+
+
+def _adventure_node_form(world_key, node_opts, nd):
+    """Add (nd=None) or edit one assignment node, including its branches."""
+    is_edit = nd is not None
+    pfx = nd["node_key"] if is_edit else f"new_{world_key}"
+    with st.form(f"advnodeform_{pfx}", clear_on_submit=not is_edit):
+        title = st.text_input("Title", value=(nd["title"] if is_edit else ""))
+        c1, c2 = st.columns([1, 1])
+        icon = c1.text_input("Icon (emoji)", value=(cell(nd["icon"]) if is_edit else "🎯"))
+        est = c2.number_input("Est. hours", 0.5, 20.0, step=0.5,
+                              value=(num(nd["est_hours"], 2.0) if is_edit else 2.0))
+        cur_subs = [s.strip() for s in cell(nd["subjects"]).split(",") if s.strip()] if is_edit else []
+        cur_subs = [s for s in cur_subs if s in WA_SUBJECTS]
+        subs = st.multiselect("Subjects (these are the hours that get logged)",
+                              WA_SUBJECTS, default=cur_subs)
+        mission = st.text_area("Mission - what they're actually doing",
+                              value=(cell(nd["mission"]) if is_edit else ""))
+        expects = st.text_area("What's expected (one per line)", height=120,
+                              value=(cell(nd["expectations"]) if is_edit else ""))
+        deliverable = st.text_input("Turn in - the deliverable / proof of work",
+                                    value=(cell(nd["deliverable"]) if is_edit else ""))
+        st.markdown("**Where can they go next? (up to 3 branches)**")
+        existing = json.loads(cell(nd["branches"]) or "[]") if is_edit else []
+        target_keys = [k for k in node_opts if not (is_edit and k == nd["node_key"])]
+        opts = ["— none —"] + target_keys
+        fmt = lambda k: "— none —" if k == "— none —" else node_opts.get(k, k)
+        picks = []
+        for i in range(3):
+            ex = existing[i] if i < len(existing) else {}
+            bc1, bc2 = st.columns([2, 3])
+            ti = opts.index(ex["to"]) if ex.get("to") in opts else 0
+            tgt = bc1.selectbox(f"Next #{i + 1}", opts, index=ti, format_func=fmt,
+                                key=f"advbr_{pfx}_{i}_to")
+            lbl = bc2.text_input(f"Choice label #{i + 1}", value=ex.get("label", ""),
+                                 key=f"advbr_{pfx}_{i}_lbl")
+            picks.append((tgt, lbl, ex.get("teaser", "")))
+        saved = st.form_submit_button("Save assignment" if is_edit else "Add assignment",
+                                      type="primary")
+    if saved and title.strip():
+        branches = [{"label": (l.strip() or node_opts.get(t, "")), "teaser": tz, "to": t}
+                    for (t, l, tz) in picks if t != "— none —"]
+        subj_str = ",".join(subs)
+        if is_edit:
+            update_adventure_node(nd["node_key"], title.strip(), icon.strip(), subj_str,
+                                  mission.strip(), expects.strip(), deliverable.strip(),
+                                  est, branches)
+        else:
+            nk = f"{world_key}-{int(time.time() * 1000)}"
+            add_adventure_node(nk, world_key, title.strip(), icon.strip(), subj_str,
+                               mission.strip(), expects.strip(), deliverable.strip(),
+                               est, branches)
+            w = conn.execute("SELECT start_node_key FROM adventure_worlds "
+                             "WHERE world_key = ?", (world_key,)).fetchone()
+            if not (w and cell(w[0])):
+                conn.execute("UPDATE adventure_worlds SET start_node_key = ? "
+                             "WHERE world_key = ?", (nk, world_key))
+                conn.commit()
+        st.rerun()
+    if is_edit and st.button("🗑 Delete this assignment",
+                             key=f"advdel_{nd['node_key']}"):
+        delete_adventure_node(nd["node_key"])
+        st.rerun()
+
+
+def render_adventure_admin():
+    """Parent authoring for the Choose-Your-Adventure Passion Track. Worlds and
+    assignments are data, so everything here is add/edit/delete - no code."""
+    st.subheader("🎢 Adventure Builder")
+    st.caption("Build the worlds and branching assignments the student sees on "
+               "their Adventures tab. Changes appear immediately in their view.")
+    worlds = get_adventure_worlds_df()
+
+    with st.expander("➕ New world", expanded=worlds.empty):
+        with st.form("adv_new_world", clear_on_submit=True):
+            c1, c2 = st.columns([3, 1])
+            wname = c1.text_input("World name (e.g. Maker's Forge)")
+            wemoji = c2.text_input("Emoji", value="🌍")
+            wcolor = st.color_picker("Color", value="#FF6B4A")
+            if st.form_submit_button("Add world", type="primary") and wname.strip():
+                add_adventure_world(f"w{int(time.time() * 1000)}", wname.strip(),
+                                    wemoji.strip() or "🌍", wcolor, None)
+                st.rerun()
+
+    if worlds.empty:
+        st.info("Add a world to get started.")
+        return
+
+    wnames = [f"{cell(r['emoji'])} {r['name']}" for _, r in worlds.iterrows()]
+    wi = st.selectbox("World to edit", range(len(worlds)), format_func=lambda i: wnames[i])
+    world = worlds.iloc[wi]
+    world_key = world["world_key"]
+    nodes = get_adventure_nodes_df(world_key)
+    node_opts = {r["node_key"]: f"{cell(r['icon'])} {r['title']}" for _, r in nodes.iterrows()}
+
+    with st.expander("⚙ World settings"):
+        keys = list(node_opts.keys())
+        if keys:
+            cur = cell(world["start_node_key"])
+            si = keys.index(cur) if cur in keys else 0
+            start_i = st.selectbox("First assignment (where the adventure begins)",
+                                   range(len(keys)), index=si,
+                                   format_func=lambda i: node_opts[keys[i]],
+                                   key=f"advstart_{world_key}")
+            if st.button("Save start assignment", key=f"advsavestart_{world_key}"):
+                update_adventure_world(world_key, world["name"], world["emoji"],
+                                       world["color"], keys[start_i])
+                st.rerun()
+        else:
+            st.caption("Add an assignment below - the first one becomes the start automatically.")
+        st.divider()
+        if st.button("🗑 Delete this whole world (and its assignments)",
+                     key=f"advdelw_{world_key}"):
+            delete_adventure_world(world_key)
+            st.rerun()
+
+    st.markdown(f"### Assignments in {cell(world['emoji'])} {world['name']}")
+    if nodes.empty:
+        st.info("No assignments yet - add one below.")
+    for _, nd in nodes.iterrows():
+        is_start = cell(nd["node_key"]) == cell(world["start_node_key"])
+        with st.expander(f"{cell(nd['icon'])} {nd['title']}" + ("  ⭐ start" if is_start else "")):
+            _adventure_node_form(world_key, node_opts, nd)
+
+    with st.expander("➕ New assignment"):
+        _adventure_node_form(world_key, node_opts, None)
 
 
 def render_fun_projects_picker(student_id, school_year, key_prefix):
@@ -6536,7 +6722,7 @@ with st.sidebar:
             "pnav_progress", "parent_view")
         _nav_group("🎯 Content", [
             ("Plan Blender", "🎛️"), ("Passion Track", "🗺️"), ("Foundations", "🧭"),
-            ("Travel Log", "🧳")],
+            ("Travel Log", "🧳"), ("Adventure Builder", "🎢")],
             "pnav_content", "parent_view")
         _nav_group("🗄️ Records", [
             ("Accounts", "🔑"), ("Assessments", "✅"), ("Export", "⬇️")],
@@ -7545,6 +7731,8 @@ else:
         render_scope_reference(student_row["grade"])
 
     # ---- Quest Board
+    elif parent_view == "Adventure Builder":
+        render_adventure_admin()
     elif parent_view == "Passion Track":
         school_year = student_row["school_year"] or "current"
         render_fun_projects_picker(student_id, school_year, key_prefix="parent")
