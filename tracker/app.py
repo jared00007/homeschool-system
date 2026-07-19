@@ -4510,14 +4510,32 @@ def _jump(view, key, label, primary=False, world=None):
         st.rerun()
 
 
+HOME_CARD_CSS = """
+<style>
+div[class*="st-key-hc_"]{border:3px solid #1A1610;border-radius:15px;padding:15px 16px 9px;
+  margin-bottom:13px;box-shadow:4px 4px 0 #1A1610;}
+div[class*="st-key-hc_"] h4,div[class*="st-key-hc_"] p,div[class*="st-key-hc_"] strong,
+div[class*="st-key-hc_"] [data-testid="stCaptionContainer"]{color:#1A1610 !important;}
+.st-key-hc_today{background:#FF6B4A;}
+.st-key-hc_adv{background:#6C7BF0;}
+.st-key-hc_skill{background:#2FBFA6;}
+.st-key-hc_debrief{background:#FFD23F;}
+div[class*="st-key-hc_"] button[kind]{background:#FFF6E6 !important;border:2.5px solid #1A1610 !important;
+  color:#1A1610 !important;font-weight:800 !important;box-shadow:2px 2px 0 #1A1610 !important;}
+div[class*="st-key-hc_"] button[kind]:hover{background:#FFD23F !important;}
+</style>
+"""
+
+
 def render_home_feed(student_id, school_year, student_row):
     """The student home: surfaces what to do now, in order — today's work,
     the current adventure, this week's life skill, quick jumps, the debrief.
     Every card routes into an existing view; nothing here is new content."""
+    st.markdown(HOME_CARD_CSS, unsafe_allow_html=True)
     st.caption("Here's what's up today. Tap into anything.")
 
     done, total, holiday, nxt = _today_counts(student_id, student_row)
-    with st.container(border=True):
+    with st.container(key="hc_today"):
         if holiday:
             st.markdown(f"#### 📅 Today\n🎉 No school — {holiday}")
         elif total == 0:
@@ -4534,7 +4552,7 @@ def render_home_feed(student_id, school_year, student_row):
         "SELECT world_key, node_key, title FROM student_fun_projects WHERE "
         "student_id = ? AND world_key IS NOT NULL AND status != 'finished' "
         "ORDER BY step_index DESC, id DESC LIMIT 1", (student_id,)).fetchone()
-    with st.container(border=True):
+    with st.container(key="hc_adv"):
         if adv:
             wr = conn.execute("SELECT emoji, name FROM adventure_worlds WHERE "
                               "world_key = ?", (adv[0],)).fetchone()
@@ -4554,7 +4572,7 @@ def render_home_feed(student_id, school_year, student_row):
         inc = fdf[fdf["prog_status"] != "complete"]
         if not inc.empty:
             pick = inc.iloc[0]
-    with st.container(border=True):
+    with st.container(key="hc_skill"):
         if pick is not None:
             st.markdown(f"#### 🧭 This week's life skill\n**{pick['title']}**")
         else:
@@ -4571,7 +4589,7 @@ def render_home_feed(student_id, school_year, student_row):
     with c3:
         _jump("Travel Log", "home_travel", "🧳 Travel")
 
-    with st.container(border=True):
+    with st.container(key="hc_debrief"):
         st.markdown("#### ⚡ End your day\nTwo taps: how are you, and how'd it go?")
         _jump("Today", "home_debrief", "Daily Debrief →")
 
@@ -6673,14 +6691,14 @@ button[kind="primary"]:hover, button[kind="secondary"]:hover {
    tint of that group's color at rest, and goes full-saturated with an
    outline when it's the active view. Scoped via st.container(key=...),
    which Streamlit renders as a stable "st-key-<name>" class. */
-.st-key-nav_schedule button[kind="secondary"] { background: #BEE7F7 !important; color: #1A1610 !important; }
-.st-key-nav_schedule button[kind="primary"] { background: #4FC3E8 !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
-.st-key-nav_learning button[kind="secondary"] { background: #CFF0D3 !important; color: #1A1610 !important; }
-.st-key-nav_learning button[kind="primary"] { background: #6FCF7A !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
-.st-key-nav_extras button[kind="secondary"] { background: #FCD3E6 !important; color: #1A1610 !important; }
-.st-key-nav_extras button[kind="primary"] { background: #FF5FA2 !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
-.st-key-nav_more button[kind="secondary"] { background: #E3D3F9 !important; color: #1A1610 !important; }
-.st-key-nav_more button[kind="primary"] { background: #B084F0 !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
+.st-key-nav_home button[kind="secondary"] { background: #FFD8CC !important; color: #1A1610 !important; }
+.st-key-nav_home button[kind="primary"] { background: #FF6B4A !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
+.st-key-nav_do button[kind="secondary"] { background: #BEE7F7 !important; color: #1A1610 !important; }
+.st-key-nav_do button[kind="primary"] { background: #4FC3E8 !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
+.st-key-nav_explore button[kind="secondary"] { background: #CFF0D3 !important; color: #1A1610 !important; }
+.st-key-nav_explore button[kind="primary"] { background: #6FCF7A !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
+.st-key-nav_me button[kind="secondary"] { background: #E3D3F9 !important; color: #1A1610 !important; }
+.st-key-nav_me button[kind="primary"] { background: #B084F0 !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
 /* Parent nav — same Always-On Color treatment, one color per group. */
 .st-key-pnav_daily button[kind="secondary"] { background: #BEE7F7 !important; color: #1A1610 !important; }
 .st-key-pnav_daily button[kind="primary"] { background: #4FC3E8 !important; color: #1A1610 !important; outline: 2px solid #1A1610; outline-offset: 1px; }
