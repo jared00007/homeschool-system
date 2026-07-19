@@ -5745,6 +5745,11 @@ def render_day1_checklist(student_id, school_year):
     st.subheader("Day 1 & Day 2 Checklist")
     st.caption("Get set up before you dive into lessons. Ask a parent if you get stuck.")
 
+    st.info("✍️ Heads up: copy & paste are turned off on your pages — on "
+            "purpose. It's not to annoy you; it's so the thinking stays *yours*. "
+            "Type things in your own words and you'll actually remember them. "
+            "That's the whole point.")
+
     school_email = get_school_email(student_id)
     if school_email:
         st.info(f"📧 Use this email for all your school site signups: "
