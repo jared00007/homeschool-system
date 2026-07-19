@@ -4520,6 +4520,7 @@ div[class*="st-key-hc_"] [data-testid="stCaptionContainer"]{color:#1A1610 !impor
 .st-key-hc_adv{background:#6C7BF0;}
 .st-key-hc_skill{background:#2FBFA6;}
 .st-key-hc_debrief{background:#FFD23F;}
+.st-key-hc_quick{background:#B084F0;}
 div[class*="st-key-hc_"] button[kind]{background:#FFF6E6 !important;border:2.5px solid #1A1610 !important;
   color:#1A1610 !important;font-weight:800 !important;box-shadow:2px 2px 0 #1A1610 !important;}
 div[class*="st-key-hc_"] button[kind]:hover{background:#FFD23F !important;}
@@ -4580,14 +4581,15 @@ def render_home_feed(student_id, school_year, student_row):
                         "Real-world skills — money, cooking, adulting.")
         _jump("Foundations", "home_found", "Go to Life Skills →")
 
-    st.markdown("##### Quick jump")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        _jump("My Grades", "home_grades", "🏆 Grades")
-    with c2:
-        _jump("Quizzes", "home_quiz", "📝 Quizzes")
-    with c3:
-        _jump("Travel Log", "home_travel", "🧳 Travel")
+    with st.container(key="hc_quick"):
+        st.markdown("#### 🧭 Quick jump")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            _jump("My Grades", "home_grades", "🏆 Grades")
+        with c2:
+            _jump("Quizzes", "home_quiz", "📝 Quizzes")
+        with c3:
+            _jump("Travel Log", "home_travel", "🧳 Travel")
 
     with st.container(key="hc_debrief"):
         st.markdown("#### ⚡ End your day\nTwo taps: how are you, and how'd it go?")
