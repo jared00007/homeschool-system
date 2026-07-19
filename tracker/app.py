@@ -16,6 +16,7 @@ Modes:
 
 from html import escape as escape_html
 import os
+import json
 import random
 import re
 import sqlite3
@@ -1813,6 +1814,230 @@ INTEREST_OPTIONS = [
 ]
 
 
+# ---------------------------------------------------- Passion Track adventures
+# "Choose Your Adventure": worlds -> branching assignment nodes. Stored as data
+# (seeded into adventure_worlds / adventure_nodes) so new worlds, assignments,
+# and branches are content, not code. Each node's `subjects` are real WA_SUBJECTS
+# so completion attributes compliance hours via finish_fun_project, exactly like
+# a quest. `branches` point to other nodes by node_key; [] means a leaf (an arm
+# of the adventure ends there).
+ADVENTURE_WORLDS = [
+    {"key": "forge",  "name": "Maker's Forge", "emoji": "⚙️", "color": "#FF6B4A", "start": "f0"},
+    {"key": "studio", "name": "Story Studio",  "emoji": "🎬",   "color": "#6C7BF0", "start": "s0"},
+    {"key": "lab",    "name": "Field & Lab",   "emoji": "🔬",   "color": "#2FBFA6", "start": "l0"},
+    {"key": "hustle", "name": "Hustle HQ",     "emoji": "💰",   "color": "#7BC950", "start": "h0"},
+]
+# Friendly subject teasers in the branch labels; the stored `subjects` use exact
+# WA_SUBJECTS tags (Math->Mathematics, Art/Music->Art & Music Appreciation,
+# Money/Shop->Occupational Education) so the hour split lands on real subjects.
+ADVENTURE_NODES = [
+    {"key": "f0", "world": "forge", "title": "Build a trebuchet", "icon": "🪓",
+     "subjects": "Science", "hours": 4.0,
+     "mission": "Design and build a working tabletop trebuchet that can launch a marshmallow at least 10 feet.",
+     "expects": ["Build a frame that stands on its own and holds a swinging arm",
+                 "Use a counterweight (not a rubber band) as the power",
+                 "Get 3 launches and measure how far each one goes",
+                 "Change one thing - arm length OR counterweight - and test if it flies farther"],
+     "deliverable": "A 30-sec video of it firing + your 3 measured distances",
+     "branches": [{"label": "Double the distance", "teaser": "Re-engineer for 2x range · Math, Science", "to": "f1"},
+                  {"label": "Slow-mo cinema", "teaser": "Film + explain the launch · Art, Writing", "to": "f2"},
+                  {"label": "Siege story", "teaser": "Write the battle it fought · Writing, History", "to": "f3"}]},
+    {"key": "f1", "world": "forge", "title": "Double the distance", "icon": "📐",
+     "subjects": "Mathematics,Science", "hours": 3.0,
+     "mission": "Tune your trebuchet until it throws at least twice as far as your first good launch.",
+     "expects": ["Write down your starting best distance",
+                 "Test 3 different counterweight amounts, measuring each",
+                 "Make a table: counterweight vs. distance",
+                 "In 2-3 sentences, say which change helped most and why"],
+     "deliverable": "Your data table + a new record that's 2x the start",
+     "branches": [{"label": "Backyard tournament", "teaser": "Score throws head-to-head · Math", "to": "f4"},
+                  {"label": "Build an auto-loader", "teaser": "Design a reload rig · Shop, Science", "to": "f5"}]},
+    {"key": "f2", "world": "forge", "title": "Slow-mo cinema", "icon": "🎬",
+     "subjects": "Art & Music Appreciation,Writing", "hours": 3.0,
+     "mission": "Film your launch in slow motion and edit a 60-second breakdown that explains what's happening.",
+     "expects": ["Capture at least one launch in slo-mo (phone is fine)",
+                 "Add on-screen labels for the arm, counterweight, and release",
+                 "Write + record a voiceover OR add captions explaining the motion",
+                 "Keep it under 60 seconds and watchable start to finish"],
+     "deliverable": "The finished 60-second edited video",
+     "branches": [{"label": "Start a build channel", "teaser": "Plan your first 3 episodes · Writing", "to": "f6"}]},
+    {"key": "f3", "world": "forge", "title": "Siege story", "icon": "📜",
+     "subjects": "Writing,History", "hours": 2.5,
+     "mission": "Write a one-page story about a medieval siege where your trebuchet is the hero weapon.",
+     "expects": ["Research one real siege and borrow details from it",
+                 "Name the castle, the attackers, and what they're fighting over",
+                 "Work in 3 accurate historical details (armor, food, tactics...)",
+                 "End with how the siege is won or lost"],
+     "deliverable": "Your 1-page story with the 3 real details underlined",
+     "branches": [{"label": "Draw the battle map", "teaser": "Chart the siege · Art", "to": "f7"}]},
+    {"key": "f4", "world": "forge", "title": "Backyard tournament", "icon": "🏆",
+     "subjects": "Mathematics", "hours": 2.0,
+     "mission": "Run a launch tournament against a friend or sibling and crown a champion with a fair scoring system.",
+     "expects": ["Everyone gets the same number of throws",
+                 "Design a scoring system (distance, hitting a target, or both)",
+                 "Record every score in a bracket or table",
+                 "Declare a winner and explain why the scoring was fair"],
+     "deliverable": "The filled-in scoreboard + who won", "branches": []},
+    {"key": "f5", "world": "forge", "title": "Auto-loader rig", "icon": "🤖",
+     "subjects": "Occupational Education,Science", "hours": 4.0,
+     "mission": "Design (and if you can, build) a way to reload the trebuchet without using your hands between shots.",
+     "expects": ["Sketch your reload idea before you build",
+                 "Build a prototype from cardboard, wood, or Lego",
+                 "Get it to load 2 shots in a row",
+                 "Note one thing that failed and how you'd fix it"],
+     "deliverable": "Your sketch + a clip of it reloading twice", "branches": []},
+    {"key": "f6", "world": "forge", "title": "Build channel", "icon": "📺",
+     "subjects": "Writing", "hours": 2.0,
+     "mission": "Plan the first 3 episodes of a 'how I build stuff' video series.",
+     "expects": ["Write a title + 2-sentence description for 3 episodes",
+                 "Script the first 20 seconds of episode 1 word-for-word",
+                 "List what you'd need to film each one", "Pick a channel name"],
+     "deliverable": "Your 3-episode plan + the episode-1 intro script", "branches": []},
+    {"key": "f7", "world": "forge", "title": "Battle map", "icon": "🗺️",
+     "subjects": "Art & Music Appreciation", "hours": 2.0,
+     "mission": "Draw a labeled map of your siege showing where everyone and everything is positioned.",
+     "expects": ["Show the castle, the attackers, and your trebuchet",
+                 "Add a key that explains your symbols",
+                 "Include a compass and a rough scale",
+                 "Make it neat enough for someone else to follow"],
+     "deliverable": "Your finished labeled battle map", "branches": []},
+
+    {"key": "s0", "world": "studio", "title": "Make comic issue #1", "icon": "✏️",
+     "subjects": "Art & Music Appreciation,Writing", "hours": 4.0,
+     "mission": "Create a 6-panel comic with one hero who faces and solves a single problem.",
+     "expects": ["Plan it first: who's the hero, what's the problem, how's it solved",
+                 "Draw 6 panels (stick figures are fine - story matters most)",
+                 "Put dialogue or a caption in every panel", "Give it a title and a cover"],
+     "deliverable": "Your 6-panel comic (photo or scan) + the cover",
+     "branches": [{"label": "Turn it into a podcast", "teaser": "Perform it as audio · Writing", "to": "s1"},
+                  {"label": "Give the hero real science", "teaser": "Powers that obey physics · Science", "to": "s2"},
+                  {"label": "Sell prints of the cover", "teaser": "Price it and advertise · Money", "to": "s3"}]},
+    {"key": "s1", "world": "studio", "title": "Comic-turned-podcast", "icon": "🎙️",
+     "subjects": "Writing", "hours": 3.0,
+     "mission": "Turn your comic's story into a 3-5 minute audio drama that you perform and record.",
+     "expects": ["Write a script with narration and character voices",
+                 "Add at least 2 sound effects (made or found)",
+                 "Record it cleanly enough to understand every line",
+                 "Keep it between 3 and 5 minutes"],
+     "deliverable": "The recorded audio + your script",
+     "branches": [{"label": "Score it with music", "teaser": "Compose a theme · Music", "to": "s4"}]},
+    {"key": "s2", "world": "studio", "title": "Real-science hero", "icon": "🧪",
+     "subjects": "Science", "hours": 2.5,
+     "mission": "Rewrite one of your hero's powers so it obeys real science - then explain the science.",
+     "expects": ["Pick one power and name the real principle behind it (force, light, energy...)",
+                 "Explain in a paragraph how it would actually work",
+                 "Name one real-world limit the power would have",
+                 "Redraw one panel to show the corrected power"],
+     "deliverable": "Your science write-up + the updated panel", "branches": []},
+    {"key": "s3", "world": "studio", "title": "Sell prints of the cover", "icon": "💵",
+     "subjects": "Occupational Education", "hours": 2.0,
+     "mission": "Turn your cover into something you could really sell, and set a fair price.",
+     "expects": ["Work out what one print costs to make (paper, ink...)",
+                 "Set a price and find your profit per print",
+                 "Design a small flyer or post advertising it",
+                 "Figure out how many you'd sell to make $20"],
+     "deliverable": "Your cost/price/profit numbers + the ad",
+     "branches": [{"label": "Do the sales math", "teaser": "Run the full numbers · Money, Math", "to": "s5"}]},
+    {"key": "s4", "world": "studio", "title": "Theme music", "icon": "🎵",
+     "subjects": "Art & Music Appreciation", "hours": 2.0,
+     "mission": "Compose a short theme (15-30 sec) that matches your hero's vibe.",
+     "expects": ["Match the mood - heroic, spooky, funny, your call",
+                 "Use any tool: app, instrument, or your voice",
+                 "Keep a steady beat the whole way",
+                 "Be ready to say why it fits the hero"],
+     "deliverable": "The recorded theme + one line on why it fits", "branches": []},
+    {"key": "s5", "world": "studio", "title": "Sales math", "icon": "🧮",
+     "subjects": "Occupational Education,Mathematics", "hours": 2.0,
+     "mission": "Do the full money math for a print run of 25 comics.",
+     "expects": ["Calculate the total cost to make 25",
+                 "Pick a price and find total revenue if all sell",
+                 "Find your profit - and profit if only half sell",
+                 "Show your work in a simple table"],
+     "deliverable": "Your completed profit table", "branches": []},
+
+    {"key": "l0", "world": "lab", "title": "Survey a pond", "icon": "🐸",
+     "subjects": "Science", "hours": 3.0,
+     "mission": "Study one small spot of water (pond, creek, puddle, even a jar) over two weeks and document what lives and changes there.",
+     "expects": ["Pick one spot and observe it 4+ times over 2 weeks",
+                 "Each visit: note the weather, the water, and any life you see",
+                 "Take a photo or make a sketch each time",
+                 "Write down one question you can't answer yet"],
+     "deliverable": "Your 4 dated observations with photos or sketches",
+     "branches": [{"label": "Graph the data", "teaser": "Turn counts into charts · Math", "to": "l1"},
+                  {"label": "Keep a field journal", "teaser": "Sketch every visit · Writing, Art", "to": "l2"}]},
+    {"key": "l1", "world": "lab", "title": "Graph the data", "icon": "📊",
+     "subjects": "Mathematics", "hours": 2.0,
+     "mission": "Turn your pond observations into at least two graphs that show change over time.",
+     "expects": ["Pick two things you counted or measured",
+                 "Make a labeled graph for each (axes + a title)",
+                 "Circle the biggest change on each graph",
+                 "Write one sentence describing the trend"],
+     "deliverable": "Your two labeled graphs",
+     "branches": [{"label": "Predict next week", "teaser": "Model the change · Science, Math", "to": "l3"}]},
+    {"key": "l2", "world": "lab", "title": "Field journal", "icon": "📓",
+     "subjects": "Writing,Art & Music Appreciation", "hours": 3.0,
+     "mission": "Turn your observations into a naturalist's field journal - the way real scientists record discoveries.",
+     "expects": ["One page per visit: date, sketch, and a description",
+                 "Label the parts of at least one sketch",
+                 "Use vivid language (not just 'green water')",
+                 "Add a cover with your name and the location"],
+     "deliverable": "Your finished multi-page field journal", "branches": []},
+    {"key": "l3", "world": "lab", "title": "Predict next week", "icon": "🔮",
+     "subjects": "Science,Mathematics", "hours": 2.0,
+     "mission": "Use your two weeks of data to predict what the pond will look like next week - then check if you were right.",
+     "expects": ["Write a specific prediction based on your trend",
+                 "Explain your reasoning using your data",
+                 "Go back and observe again after a week",
+                 "Compare: were you right? Why or why not?"],
+     "deliverable": "Your written prediction + the follow-up check", "branches": []},
+
+    {"key": "h0", "world": "hustle", "title": "Launch a micro-business", "icon": "🧃",
+     "subjects": "Occupational Education", "hours": 4.0,
+     "mission": "Start a tiny real business - something people will actually pay for - and make your first sale.",
+     "expects": ["Pick something you can make, or a service you can do",
+                 "Work out your cost per item before you start",
+                 "Set a price and prepare at least 3 to sell",
+                 "Make one real sale and write it down"],
+     "deliverable": "Proof of your first sale + what it cost vs. what you charged",
+     "branches": [{"label": "Keep real books", "teaser": "Track every dollar · Money, Math", "to": "h1"},
+                  {"label": "Make an ad", "teaser": "Design a flyer or reel · Art", "to": "h2"}]},
+    {"key": "h1", "world": "hustle", "title": "Keep real books", "icon": "🧮",
+     "subjects": "Occupational Education,Mathematics", "hours": 2.0,
+     "mission": "Track every dollar in and out of your business, like a real owner, for one week.",
+     "expects": ["Log every expense and every sale with a date",
+                 "Calculate your running profit as you go",
+                 "Total it all up at the end of the week",
+                 "Answer: did you make or lose money, and why?"],
+     "deliverable": "Your week-long money log with totals",
+     "branches": [{"label": "Plan to scale", "teaser": "What would 10x take? · Money", "to": "h3"}]},
+    {"key": "h2", "world": "hustle", "title": "Make an ad", "icon": "📸",
+     "subjects": "Art & Music Appreciation", "hours": 2.0,
+     "mission": "Design an advertisement that makes someone want to buy what you're selling.",
+     "expects": ["Include what it is, why it's good, and the price",
+                 "Make it eye-catching - color, a picture or logo",
+                 "Write one catchy line (a slogan)",
+                 "Show it to 3 people and note their reactions"],
+     "deliverable": "Your finished ad + what the 3 people said",
+     "branches": [{"label": "Pitch it live", "teaser": "Deliver a 60-sec pitch · Writing", "to": "h4"}]},
+    {"key": "h3", "world": "hustle", "title": "Scale plan", "icon": "📈",
+     "subjects": "Occupational Education", "hours": 2.0,
+     "mission": "Make a plan for how you'd grow the business 10x bigger.",
+     "expects": ["Figure out what 10x the sales needs (materials, time, help)",
+                 "Identify your single biggest bottleneck",
+                 "Estimate what it would cost to scale up",
+                 "Decide if it's worth it - and explain"],
+     "deliverable": "Your 1-page growth plan", "branches": []},
+    {"key": "h4", "world": "hustle", "title": "Live pitch", "icon": "🗣️",
+     "subjects": "Writing", "hours": 1.5,
+     "mission": "Write and deliver a 60-second 'shark tank' pitch for your business.",
+     "expects": ["Open with a hook that grabs attention",
+                 "Cover what it is, who it's for, and the price",
+                 "End with an 'ask' (buy now, invest...)",
+                 "Deliver it out loud to someone, in under 60 seconds"],
+     "deliverable": "A recording of your pitch, or a witness who saw it", "branches": []},
+]
+
+
 # ------------------------------------------------------------- database
 @st.cache_resource(show_spinner=False)
 def get_conn():
@@ -2079,6 +2304,31 @@ def get_conn():
         conn.execute("ALTER TABLE student_fun_projects ADD COLUMN hours_logged INTEGER DEFAULT 0")
     if "icon" not in cols:
         conn.execute("ALTER TABLE student_fun_projects ADD COLUMN icon TEXT DEFAULT '🗺️'")
+    # --- Passion Track "Choose Your Adventure": worlds + branching nodes.
+    # Own tables so the existing flat quest picker is untouched; completion still
+    # routes through finish_fun_project (see render_adventure).
+    conn.execute("""CREATE TABLE IF NOT EXISTS adventure_worlds (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, world_key TEXT UNIQUE,
+        name TEXT, emoji TEXT, color TEXT, start_node_key TEXT,
+        sort_order INTEGER DEFAULT 0, active INTEGER DEFAULT 1)""")
+    conn.execute("""CREATE TABLE IF NOT EXISTS adventure_nodes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, node_key TEXT UNIQUE,
+        world_key TEXT NOT NULL, title TEXT NOT NULL, icon TEXT,
+        subjects TEXT, mission TEXT, expectations TEXT, deliverable TEXT,
+        est_hours REAL DEFAULT 2.0, branches TEXT, sort_order INTEGER DEFAULT 0,
+        active INTEGER DEFAULT 1)""")
+    # A student's path through an adventure lives on student_fun_projects,
+    # reusing its finished/hours_logged idempotency; these columns locate each
+    # row within a world's trail.
+    cols = table_columns(conn, "student_fun_projects")
+    if "world_key" not in cols:
+        conn.execute("ALTER TABLE student_fun_projects ADD COLUMN world_key TEXT")
+    if "node_key" not in cols:
+        conn.execute("ALTER TABLE student_fun_projects ADD COLUMN node_key TEXT")
+    if "step_index" not in cols:
+        conn.execute("ALTER TABLE student_fun_projects ADD COLUMN step_index INTEGER")
+    if "expects_done" not in cols:
+        conn.execute("ALTER TABLE student_fun_projects ADD COLUMN expects_done TEXT")
     cols = table_columns(conn, "student_books")
     if "finished_at" not in cols:
         conn.execute("ALTER TABLE student_books ADD COLUMN finished_at TEXT")
@@ -2133,6 +2383,25 @@ def get_conn():
             conn.execute(
                 "UPDATE fun_project_pool SET icon = ? WHERE title = ? AND icon = '🗺️'",
                 (proj["icon"], proj["title"]))
+    # Passion Track adventures: seeded once behind a flag (same reasoning as the
+    # Smithsonian/Foundations blocks) so a parent's edits and deletions stick.
+    if not conn.execute("SELECT value FROM settings WHERE key = ?",
+                        ("adventures_seeded",)).fetchone():
+        for i, w in enumerate(ADVENTURE_WORLDS):
+            conn.execute("""INSERT INTO adventure_worlds
+                (world_key, name, emoji, color, start_node_key, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?)""",
+                (w["key"], w["name"], w["emoji"], w["color"], w["start"], i))
+        for i, n in enumerate(ADVENTURE_NODES):
+            conn.execute("""INSERT INTO adventure_nodes
+                (node_key, world_key, title, icon, subjects, mission, expectations,
+                 deliverable, est_hours, branches, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (n["key"], n["world"], n["title"], n["icon"], n["subjects"],
+                 n["mission"], "\n".join(n["expects"]), n["deliverable"],
+                 n["hours"], json.dumps(n["branches"]), i))
+        conn.execute("INSERT INTO settings (key, value) VALUES (?, ?)",
+                     ("adventures_seeded", "1"))
     # Smithsonian collections: seeded exactly once, tracked by a settings flag
     # rather than by checking titles. Deliberate — a title check would silently
     # resurrect any collection the parent deleted on the next restart, and
