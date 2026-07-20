@@ -7920,9 +7920,11 @@ else:
             ga_show["%"] = (100 * _sc / _mx).round(1)
             ga_show["Letter"] = ga_show["%"].apply(letter_grade)
             ga_show["📷"] = ga_show["photo_path"].apply(lambda p: "📷" if p else "")
+            ga_show["🚩"] = ga_show["notes"].apply(lambda n: (
+                ("⚡" if "⚡" in str(n) else "") + ("👀" if "👀" in str(n) else "")))
             ga_show["assign_date"] = ga_show["assign_date"].apply(fmt_date)
             st.dataframe(ga_show[["id", "assign_date", "subject", "title",
-                                  "score", "max_score", "%", "Letter", "notes", "📷"]].rename(
+                                  "score", "max_score", "%", "Letter", "🚩", "notes", "📷"]].rename(
                 columns={"id": "ID", "assign_date": "Date", "subject": "Subject",
                          "title": "Assignment", "score": "Score",
                          "max_score": "Out of", "notes": "Notes"}),
