@@ -7018,6 +7018,41 @@ def _apply_paste_block(active):
     )
 
 
+def _quiz_focus_guard():
+    """Focus deterrent for quizzes. Installs (once) a tab-visibility listener
+    that, ONLY while the quiz is actually on-screen (detected by the on-page
+    'Focus mode' marker, which Streamlit removes when you navigate away), swaps
+    the browser-tab title to a warning if the student switches away, and counts
+    it. Self-cleaning — no persistent banner to leave stranded on other pages.
+    A browser can't truly *prevent* switching (only a device-level kiosk can);
+    this is a live nudge on top of the copy/paste block + the too-fast flag."""
+    components.html(
+        """
+        <script>
+        (function(){
+          var doc = window.parent && window.parent.document;
+          if(!doc || doc.__quizFocusInit) return;
+          doc.__quizFocusInit = true;
+          doc.addEventListener('visibilitychange', function(){
+            var onQuiz = !!(doc.body && doc.body.innerText.indexOf('Focus mode') >= 0);
+            if(doc.hidden){
+              if(onQuiz){
+                doc.__qLeaves = (doc.__qLeaves || 0) + 1;
+                if(!doc.__qTitle){ doc.__qTitle = doc.title; }
+                doc.title = '\u26A0\uFE0F Back to your quiz! (left ' + doc.__qLeaves + 'x)';
+              }
+            } else if(doc.__qTitle){
+              doc.title = doc.__qTitle;
+              doc.__qTitle = null;
+            }
+          }, true);
+        })();
+        </script>
+        """,
+        height=0,
+    )
+
+
 _apply_paste_block(not parent_mode)
 
 # =========================================================== STUDENT MODE
@@ -7629,6 +7664,9 @@ if not parent_mode:
 
             st.info("⏱️ We track how long quizzes take — take your time to "
                     "read each question and think it through.")
+            st.caption("🔒 Focus mode: this quiz watches for tab-switching — "
+                       "stay on this page until you submit.")
+            _quiz_focus_guard()
             with st.form(key=f"quiz_form_{quiz_key}"):
                 responses = []
                 for i, q in enumerate(questions):
