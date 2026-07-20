@@ -3065,6 +3065,18 @@ def get_all_visited_states(student_id):
     return visited
 
 
+def get_visited_park_ids(student_id):
+    """Park ids the student has already logged (for one-and-done tracking)."""
+    e = get_travel_entries(student_id)
+    return {int(x) for x in e["tag_park_id"].dropna()} if not e.empty else set()
+
+
+def get_visited_city_ids(student_id):
+    """City ids the student has already logged (for one-and-done tracking)."""
+    e = get_travel_entries(student_id)
+    return {int(x) for x in e["tag_city_id"].dropna()} if not e.empty else set()
+
+
 def get_link_reports(student_id, status=None):
     q = "SELECT * FROM link_reports WHERE student_id = ?"
     params = [student_id]
@@ -5676,6 +5688,12 @@ def render_travel_entry_form(student_id, school_year, key_prefix):
     cities_df = get_major_cities_df()
     city_labels = list(cities_df["name"] + " (" + cities_df["state"] + ")")
     city_label_to_id = dict(zip(city_labels, cities_df["id"]))
+    visited_parks = get_visited_park_ids(student_id)
+    visited_cities = get_visited_city_ids(student_id)
+    avail_parks = (parks_df[~parks_df["id"].isin(visited_parks)]
+                   if not parks_df.empty else parks_df)
+    avail_city_labels = [lbl for lbl in city_labels
+                         if int(city_label_to_id[lbl]) not in visited_cities]
 
     entry_type = st.selectbox(
         "Type", ["🏔️ National Park visit", "🗺️ State visit", "🏙️ City visit",
@@ -5684,17 +5702,24 @@ def render_travel_entry_form(student_id, school_year, key_prefix):
 
     with st.form(f"{key_prefix}_travel_entry_add", clear_on_submit=True):
         if entry_type == "🏔️ National Park visit":
-            c1, c2 = st.columns([2, 1])
-            with c1:
-                park_name = st.selectbox("Park", list(parks_df["name"]))
-            with c2:
-                entry_date = st.date_input("Date visited", value=date.today(),
-                                           format="MM-DD-YYYY")
-            badge = st.checkbox("🏅 Earned Junior Ranger badge")
-            st.caption("📝 Where is it, and what's one geographic feature "
-                      "(mountains, coast, desert...) that stands out?")
-            content = st.text_area("Notes (optional)", height=68,
-                                   placeholder="What you did, what you saw...")
+            _tot, _done = len(parks_df), len(visited_parks)
+            st.caption(f"🏔️ {_done}/{_tot} national parks logged"
+                       + (f" · {round(100 * _done / _tot)}% of the list" if _tot else ""))
+            park_name, badge, entry_date, content = None, False, date.today(), ""
+            if avail_parks.empty:
+                st.success("You've logged every park on the list! 🎉 Nothing left to add.")
+            else:
+                c1, c2 = st.columns([2, 1])
+                with c1:
+                    park_name = st.selectbox("Park", list(avail_parks["name"]))
+                with c2:
+                    entry_date = st.date_input("Date visited", value=date.today(),
+                                               format="MM-DD-YYYY")
+                badge = st.checkbox("🏅 Earned Junior Ranger badge")
+                st.caption("📝 Where is it, and what's one geographic feature "
+                          "(mountains, coast, desert...) that stands out?")
+                content = st.text_area("Notes (optional)", height=68,
+                                       placeholder="What you did, what you saw...")
         elif entry_type == "🗺️ State visit":
             all_visited = get_all_visited_states(student_id)
             if all_visited:
@@ -5710,15 +5735,22 @@ def render_travel_entry_form(student_id, school_year, key_prefix):
                       "one geographic feature that stands out?")
             content = st.text_area("Notes (optional)", height=68)
         elif entry_type == "🏙️ City visit":
-            c1, c2 = st.columns([2, 1])
-            with c1:
-                city_label = st.selectbox("City", city_labels)
-            with c2:
-                entry_date = st.date_input("Date visited", value=date.today(),
-                                           format="MM-DD-YYYY")
-            st.caption("📝 What's this city's setting like — coast, river, "
-                      "mountains, plains?")
-            content = st.text_area("Notes (optional)", height=68)
+            _tot, _done = len(city_labels), len(visited_cities)
+            st.caption(f"🏙️ {_done}/{_tot} cities logged"
+                       + (f" · {round(100 * _done / _tot)}% of the list" if _tot else ""))
+            city_label, entry_date, content = None, date.today(), ""
+            if not avail_city_labels:
+                st.success("You've logged every city on the list! 🎉 Nothing left to add.")
+            else:
+                c1, c2 = st.columns([2, 1])
+                with c1:
+                    city_label = st.selectbox("City", avail_city_labels)
+                with c2:
+                    entry_date = st.date_input("Date visited", value=date.today(),
+                                               format="MM-DD-YYYY")
+                st.caption("📝 What's this city's setting like — coast, river, "
+                          "mountains, plains?")
+                content = st.text_area("Notes (optional)", height=68)
         else:
             title = st.text_input("Title")
             entry_date = st.date_input("Date", value=date.today(),
@@ -5737,7 +5769,9 @@ def render_travel_entry_form(student_id, school_year, key_prefix):
             else:
                 photo_path = (save_uploaded_photo(photo, student_id)
                               if photo is not None else None)
-                if entry_type == "🏔️ National Park visit":
+                if entry_type == "🏔️ National Park visit" and not park_name:
+                    st.info("Every park is already logged — nothing new to add.")
+                elif entry_type == "🏔️ National Park visit":
                     _pm = parks_df[parks_df["name"] == park_name]
                     park_id = int(_pm.iloc[0]["id"]) if not _pm.empty else None
                     add_travel_entry(student_id, school_year, entry_date, park_name,
@@ -5749,6 +5783,8 @@ def render_travel_entry_form(student_id, school_year, key_prefix):
                                      content.strip(), photo_path, state, None,
                                      None, False)
                     st.success(f"Logged {state}!")
+                elif entry_type == "🏙️ City visit" and not city_label:
+                    st.info("Every city is already logged — nothing new to add.")
                 elif entry_type == "🏙️ City visit":
                     city_id = int(city_label_to_id[city_label])
                     add_travel_entry(student_id, school_year, entry_date, city_label,
