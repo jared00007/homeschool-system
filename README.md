@@ -1,112 +1,95 @@
-# Homeschool One-Stop — 8th Grade (Washington DOI)
+# 🧭 Compass
 
-One app for everything: your son's daily schedule with links,
-hour logging with parent approval, grading, and WA compliance tracking.
-Runs entirely on your own Mac — no cloud hosting, no monthly cost,
-nothing internet-facing — and is reachable from other devices (Landon's
-laptop or phone) over your home WiFi network.
+A homeschool app that follows what a kid is actually *into* — while still
+guaranteeing the real-life skills school skips — and quietly keeps the hours and
+records a homeschool parent needs for the state.
 
-## Folder structure
+Built for grades 8–9 (Washington DOI compliance framing). Runs one private
+instance per family.
+
+---
+
+## What it does
+
+- **Two-track learning.** A **Passion Track** (interest-led project "adventures"
+  that branch through a 4-phase arc — Start · Build · Level Up · Showcase) and a
+  **Foundations Track** (life skills — money, cooking, civics), blended into a
+  weekly plan at a parent-set ratio.
+- **Records that fill themselves in.** Every quest and module is tagged to real
+  WA subjects, so finishing the fun stuff logs compliance hours automatically —
+  pending parent approval.
+- **Parent as certifier.** Kids log work; nothing counts until a parent approves
+  it in Review & Approve. Clean records / ESA export when you need it.
+- **A home the kid runs toward.** A Home feed, a sprint-board "Today," grades,
+  quizzes, a travel log, and a daily debrief.
+
+For the full plain-language tour see [docs/COMPASS_OVERVIEW.md](docs/COMPASS_OVERVIEW.md).
+
+---
+
+## How it runs
+
+| | Local (dev) | Hosted (each family) |
+|---|---|---|
+| Backend | SQLite file (`tracker/homeschool.db`) | Postgres (free Neon) |
+| Host | your Mac | Render (free tier) |
+| Parent mode | shown on localhost | unlocked by `PARENT_PASSCODE` |
+
+The app auto-selects the backend: set `DATABASE_URL` and it uses Postgres,
+otherwise SQLite. One Render service + one Neon database per family keeps
+households fully isolated.
+
+---
+
+## Quickstart (local)
+
+```bash
+pip install -r requirements.txt
+streamlit run tracker/app.py
+```
+
+Or on a Mac, double-click `start-tracker.command` (handles setup + launch).
+Your data lives in `tracker/homeschool.db`, created on first run. It's
+gitignored — your data never leaves your machine. Back it up by copying that
+one file.
+
+## Deploy (hosted)
+
+See **[docs/DEPLOY.md](docs/DEPLOY.md)** for the Render + Neon setup, and
+**[docs/SETUP_SECOND_FAMILY.md](docs/SETUP_SECOND_FAMILY.md)** for the
+per-family operator checklist.
+
+---
+
+## Repo layout
 
 ```
-homeschool-system/
-├── README.md
-├── start-tracker.command       ← double-click to launch (handles setup too)
-├── requirements.txt
 ├── tracker/
-│   ├── app.py                  ← the entire app
-│   ├── db_backend.py           ← database connection handling
-│   └── homeschool.db           ← all your data lives here (created on first run)
-├── curriculum/
-│   └── 8th-grade-curriculum-map.md   ← reference copy of the yearly plan
-├── resources/
-│   └── links.md                ← curriculum + WA legal links reference
-├── cloud-archive/               ← an earlier cloud-hosted (Streamlit Cloud
-│                                   + Supabase) version, not currently used —
-│                                   see cloud-archive/README.md
-└── archive/                     ← old misc files, not part of the app
+│   ├── app.py            ← the entire app
+│   └── db_backend.py     ← SQLite / Postgres connection layer
+├── requirements.txt
+├── Dockerfile            ← container image for hosting
+├── render.yaml           ← Render blueprint (one service per family)
+├── start-tracker.command ← local Mac launcher
+├── resources/ curriculum/← static reference content
+└── docs/                 ← documentation (index below)
 ```
 
-## Launch
+## Documentation
 
-Double-click `start-tracker.command`. First run installs dependencies
-automatically (takes a minute or two), then prints two web addresses:
-one for this Mac (`localhost:8501`), and one for other devices on the
-same WiFi network to use instead — see "Sharing with Landon's device"
-below.
+| Doc | For |
+|---|---|
+| [COMPASS_OVERVIEW.md](docs/COMPASS_OVERVIEW.md) | Anyone — what Compass is, plain language |
+| [COMPASS_TECHNICAL.md](docs/COMPASS_TECHNICAL.md) | Developers / operators — how it's built |
+| [FAMILY_WELCOME_GUIDE.md](docs/FAMILY_WELCOME_GUIDE.md) | A family getting started |
+| [DEPLOY.md](docs/DEPLOY.md) | Standing up the hosted app |
+| [SETUP_SECOND_FAMILY.md](docs/SETUP_SECOND_FAMILY.md) | Operator checklist for a new family |
+| [ANTI_CHEAT_DEVICE_NETWORK_SETUP.md](docs/ANTI_CHEAT_DEVICE_NETWORK_SETUP.md) | Keeping AI out of schoolwork |
 
-(If macOS blocks it: System Settings → Privacy & Security → "Open Anyway",
-or run `xattr -d com.apple.quarantine start-tracker.command` in Terminal.)
+---
 
-## Sharing with Landon's device
+## Tech
 
-The terminal window that opens shows a line like:
-
-```
-From another device on the same WiFi network, open:  http://192.168.x.x:8501
-```
-
-Type that address into a browser on his laptop or phone — as long as it's
-on the same home WiFi, he'll see the live app and the same data you do.
-The first time a new device connects, macOS may ask whether to allow
-incoming network connections — click **Allow**. This Mac needs to stay
-on and `start-tracker.command` needs to still be running for his device
-to reach it.
-
-## How it works
-
-**Two modes, switched in the sidebar:**
-
-### 🎒 Student mode (default)
-- **Today tab:** the day's schedule blocks with times, direct links to each
-  resource, and a "Done ✔" button per block
-- Pressing Done creates a PENDING entry — it does NOT count toward
-  compliance hours until a parent approves it
-- **My Week tab:** the full weekly schedule with links
-- **My Grades tab:** read-only view of his grade averages per subject
-
-### 🔑 Parent mode (this Mac only)
-The "Parent" option in the sidebar only appears when you're on this Mac
-itself (`localhost`) — any other device on the network, including Landon's,
-only ever sees Student mode, with no toggle to switch.
-
-- **Review & Approve:** every block your son marked done shows here — adjust
-  the hours if needed, then Approve (counts) or Reject (sends it back)
-- **Manual Log:** add entries directly (field trips, co-op days, catch-up) —
-  these are auto-approved since you entered them
-- **Grading:** record scores for assignments/quizzes/tests; automatic
-  per-subject averages and letter grades (student sees these in his mode)
-- **Dashboard:** approved hours vs the 1,000-hour / 180-day WA requirement,
-  planned-vs-actual for the current week, hours by subject
-- **Coverage:** the 11 WA-required subject areas at a glance
-- **Assessments:** log the annual standardized test / evaluator result
-- **Export:** CSVs of hours, grades, and assessments — your compliance
-  packet and future transcript source data
-
-## The legal side (don't forget)
-
-- **Sept 15** (or within 2 weeks of term start): file the Declaration of
-  Intent with your school district — see resources/links.md for OSPI
-- Withdraw him in writing from his prior school if applicable
-- **Spring:** one annual assessment; log it in the Assessments tab
-- **End of year:** export the CSVs and archive them as that year's packet
-
-## Changing the plan
-
-Schedule times, curriculum links, and weekly hour targets are plain-text
-constants near the top of `tracker/app.py` (WEEKLY_SCHEDULE,
-CURRICULUM_RESOURCES, PLANNED_HOURS). Edit and relaunch.
-
-## Backup
-
-Everything — hours, grades, assessments — lives in `tracker/homeschool.db`
-(created on first run). Copy that one file to back the whole system up.
-
-## A note on Parent mode access
-
-Parent mode has no password — access is controlled entirely by which
-device you're on, since only this Mac (via `localhost`) can see the
-"Parent" option at all. That's the right trade-off as long as this Mac
-stays yours alone; if Landon ever uses this same computer directly,
-he'd have full Parent access with nothing stopping him — worth
-reintroducing a password if that ever changes.
+Python · [Streamlit](https://streamlit.io) · SQLite (local) / Postgres (hosted,
+via [Neon](https://neon.tech)) · [Render](https://render.com) · Docker.
+Single-file app by design — simple to run, simple to reason about.
