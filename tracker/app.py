@@ -2366,6 +2366,8 @@ def get_conn():
     cols = table_columns(conn, "student_books")
     if "finished_at" not in cols:
         conn.execute("ALTER TABLE student_books ADD COLUMN finished_at TEXT")
+    if "hours_logged" not in cols:
+        conn.execute("ALTER TABLE student_books ADD COLUMN hours_logged INTEGER DEFAULT 0")
     cols = table_columns(conn, "curriculum_materials")
     if "seen" not in cols:
         conn.execute("ALTER TABLE curriculum_materials ADD COLUMN seen INTEGER DEFAULT 0")
@@ -3971,6 +3973,23 @@ def update_book_status(book_id, status):
     conn.commit()
 
 
+def finish_book(book_id, student_id, title, hours, note):
+    """Finish a book: store the student's take, mark finished, and log reading
+    hours once to the parent's approval queue — the same proof-of-work shape as
+    quests and foundations."""
+    row = conn.execute("SELECT hours_logged FROM student_books WHERE id = ?",
+                       (book_id,)).fetchone()
+    already = bool(row and row[0])
+    conn.execute("""UPDATE student_books SET status = 'finished', finished_date = ?,
+        finished_at = ?, notes = ?, hours_logged = 1 WHERE id = ?""",
+        (date.today().isoformat(), datetime.now().isoformat(timespec="seconds"),
+         note, book_id))
+    if not already:
+        add_entry(student_id, date.today(), "Reading", num(hours, 1.0),
+                  f"Finished reading: {title} — {note}", "Instruction", "pending")
+    conn.commit()
+
+
 def delete_student_book(book_id):
     conn.execute("DELETE FROM student_books WHERE id = ?", (book_id,))
     conn.commit()
@@ -4307,22 +4326,51 @@ def _render_reading_picker(student_id, school_year, key_prefix):
         st.markdown("**Current list:**")
         for _, b in books.iterrows():
             with st.container(border=True):
-                bc1, bc2, bc3 = st.columns([3, 1.3, 1])
-                with bc1:
-                    st.markdown(f"**{b['title']}** by {b['author']}")
-                    st.caption(b["ties_to"])
-                with bc2:
-                    opts = ["planned", "reading", "finished"]
-                    new_status = st.selectbox(
-                        "Status", opts, index=opts.index(b["status"]),
-                        key=f"{key_prefix}_book_status_{b['id']}", label_visibility="collapsed")
-                    if new_status != b["status"]:
-                        update_book_status(int(b["id"]), new_status)
-                        st.rerun()
-                with bc3:
+                st.markdown(f"**{b['title']}** by {b['author']}")
+                st.caption(cell(b["ties_to"]))
+                if b["status"] == "finished":
+                    fin = f" · {fmt_date(b['finished_date'])}" if cell(b["finished_date"]) else ""
+                    st.success(f"✅ Finished{fin}")
+                    if cell(b["notes"]):
+                        st.caption(f"📝 Your take: {b['notes']}")
                     if st.button("Remove", key=f"{key_prefix}_book_del_{b['id']}"):
                         delete_student_book(int(b["id"]))
                         st.rerun()
+                else:
+                    bc1, bc2 = st.columns([2, 1])
+                    with bc1:
+                        opts = ["planned", "reading"]
+                        cur = b["status"] if b["status"] in opts else "planned"
+                        new_status = st.selectbox(
+                            "Status", opts, index=opts.index(cur),
+                            key=f"{key_prefix}_book_status_{b['id']}", label_visibility="collapsed")
+                        if new_status != b["status"]:
+                            update_book_status(int(b["id"]), new_status)
+                            st.rerun()
+                    with bc2:
+                        if st.button("Remove", key=f"{key_prefix}_book_del_{b['id']}"):
+                            delete_student_book(int(b["id"]))
+                            st.rerun()
+                    with st.expander("📖 Finished it? Log your reading"):
+                        with st.form(f"{key_prefix}_finishbook_{b['id']}"):
+                            took = st.number_input(
+                                "About how many hours did you spend reading it?",
+                                0.5, 60.0, value=4.0, step=0.5,
+                                key=f"{key_prefix}_bookhrs_{b['id']}")
+                            take = st.text_area(
+                                "What was it about, and what did you think?",
+                                key=f"{key_prefix}_booknote_{b['id']}",
+                                placeholder="A couple sentences — the story, a "
+                                            "character, your honest take.")
+                            if st.form_submit_button("✅ Mark finished & log hours",
+                                                     type="primary"):
+                                if not take.strip():
+                                    st.warning("Add a couple sentences about the book first.")
+                                else:
+                                    finish_book(int(b["id"]), student_id, b["title"],
+                                                took, take.strip())
+                                    st.success("Logged! Sent to your parent to approve.")
+                                    st.rerun()
 
     st.markdown("**Add from the 8th grade book pool:**")
     for _, book in get_book_pool_df().iterrows():
