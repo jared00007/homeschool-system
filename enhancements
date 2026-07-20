@@ -1,28 +1,50 @@
-------enhancements / feedback------
+------enhancements & feedback------
 
----ideas---
+---ideas/brainstorming---
+is it possible to do quiz in a new window that cannot be moved od switched from untilk submit?
 parent assigned main project? something fun?
 can we include some social situational awareness for sutdent who struggles with some basics
+lets talk about the passion track. i want to branch a new idea and see how it looks. im thinking like a chose your own adventure style. (-> BUILT on compass-v2: worlds -> 4-phase adventures Start/Build/Level Up/Showcase, student board + parent builder)
+
+---upgrades---
+for national parks, do you think it makes sense forthem to only be able to enter once and move on? or allow multiple just for the sake of it?i was thinking more of 1 and done to track travel and % of totals. same really for state and ciry. thoughts?
+
 ---adds---
 pull in the retail/membership discount card list (from the separate "Project assistance needed" chat) into resources/benefits-and-discounts.md once its contents are shared — see "Still needed" section there
 consider whether the DOI reminder in the Parent Console should also store the chosen qualification method + filing date (currently only stores a per-year dismiss flag, see app.py get_doi_reminder) so the record is more than just a dismissed banner
 
----removal---
+---removals---
 
 ---work done---
-can we do better on the daily and weekly views. cards like quests / agile sprint board. lists dont seem great for kids -> Today is now a two-lane sprint board (🎯 To do / ✅ Done) of pop-art cards that physically move columns as he logs work; My Week is a five-lane Mon-Fri board (today's lane highlighted pink) with a week progress bar. Same ink-border/quest-card look. Calendar keeps the old detailed block list. Added render_block_card + render_today_board + render_week_board.
-want to say more today - get rid of it, just optional journal. also get rid of the "this week" grid on the student check-in -> removed the "Want to say more?" expander + the free-text lesson_feedback box from the student debrief (kept optional journal only, in a collapsed expander); removed the unexplained "This week:" habit grid from the student side. Parent side keeps the habit grid but now labeled ("Habit boxes he ticked, Mon-Sun — ✅ all four · 🟡 some...").
-lets rethink the health check in all around. make it better. for a 13 year old boy. make it fun and something that might get data from -> rebuilt as the "⚡ Daily Debrief". Two taps = done (how are YOU doing / how'd the SCHOOLWORK go) — dropped day_rating since it and mood were the same question to a teenager. The blank "what was hard?" box became tappable chips (Confusing / Couldn't focus / Dragged on / Went too fast / Too much of it / Frustrating / Nailed it) + "which one was the worst of it?" — structured data that actually aggregates, where prose never did. Parent Dashboard now rolls the week up as "😵‍💫 Confusing ×3 · Roughest subject: Mathematics ×3". Streak now counts CHECKING IN rather than ticking all 4 habit boxes — the old rule made the streak a reason to lie, and self-reported habits are unverifiable. Free text + journal moved into an optional expander at the bottom.
-lets build and incorporate healthy daily tasks like strecthing. taking walk breaks etc. think of other healthy ideas for a daily calendar task -> folded into the Daily Debrief as "Today's move": a rotating physical micro-challenge (stretch, 10-min walk, push-ups, wall sit, stairs, jumping jacks, shake it out, carry something heavy, dance to one song, distance eye-break) that changes daily by date like the trivia does, with a "Did it 💥" tick.
-parent view needs account/password holder (readworks) + class code -> ReadWorks was already a required service in the Accounts tab; added a "Class code" field to every account (per-service + custom forms) since ReadWorks/CommonLit/Kahoot hand these out when the parent creates a class. Shows in the student's My Logins so he can join. Credentials entered by the parent through the UI — passwords are stored/displayed in plaintext, so treat My Logins as visible to the student.
-make student view daily tab like a daily checklist of to dos. show progression bar. make it fun. -> Today is now a checklist: one "Today's checklist — N/M" progress bar at the top (to-dos = each schedule block + the health check-in), ✅/⬜ tick on every block, rotating encouragement text, and a balloons/"Full sweep" celebration the first time it hits 100% each day.
-health check in - remove the lesson hard question + what was tough. want overall lesson score tracked, and what was hard/unclear/could be better -> replaced the Yes/No "was today's lesson hard?" + "what was tough?" with a 1-5 lesson score (same emoji scale as day/mood, all three now sit side by side) plus one open "Anything hard, unclear, or that could be better?" field. Journal untouched. Parent Dashboard shows a 7-day average lesson score metric and surfaces the feedback per day.
-i have no idea what the this week is showing. tell me? -> two different things: student "My Week" is just a static timetable from WEEKLY_SCHEDULE (no personal data), and the parent Dashboard's "This week vs plan" compared approved hours against a hand-typed PLANNED_HOURS list that had drifted out of sync with the actual schedule (Writing target 2.0 vs 1.75 scheduled = a perfect week read as "behind"; Math 6.0 vs 6.5 read as "ahead"). Deleted PLANNED_HOURS; planned_hours_by_subject() now derives targets from WEEKLY_SCHEDULE, so a perfect week is always 100% and the two can't drift again.
-smithsonian learning lab - good to put some of this content in the mix? -> yes, but small: seeded 6 specific Smithsonian-created, middle-school-age collections (2 art, 2 social studies, 1 writing/storytelling, 1 history) into the Resources tab as links, all URL-verified live. Used collection URLs rather than the filtered-search URL, which carries params that rot. Seeded once via a settings flag so deleting one makes it stay deleted.
-was todays lesson hard? just y/n option with potential for text input maybe? -> added Y/N radio + optional notes to the daily Health Check-in on the Today tab, shown to parent in the Dashboard weekly summary. (SUPERSEDED — replaced by the 1-5 lesson score + open reflection field, see above.)
-upload photo from place. state & or national park & or city of state usetag to show if pic for nps, state, city. could be one could be all but tag it -> merged into the new Travel Journal (see below) — each entry supports an optional photo plus independent state/park/city tags.
-ability to submit dead or broken links as student for parent to see and fix -> student "My Logins" tab has a "Report a broken link" form + status list; parent Accounts tab has a review section (mark fixed/dismiss/delete with an optional note).
-state, park, city dynamic in sense that if you enter on that encompeses another then it auto populates the other and then removes it from potential entry. so if rainier np entered as np then state WA would be added and removed from drop down of potential entries. dont use this logic for cities. cities are meant to be visited and flagged at standalone visit or drive through potential - make sense? -> Travel Log's State Visit picker now excludes states already covered by a logged park or city visit (derived via get_all_visited_states), with a caption listing which ones. Cities were deliberately left untouched, as requested.
-can we find pdf homework sheets for student to write and complete not in digital format. or upload photo to grade and enter? -> Grading tab: "Free printable worksheets" resource list (Math-Drills, CommonCoreSheets, HomeschoolMath, EnglishLinx, K12Reader, ReadWorks — all verified live/free/no-signup) plus an optional photo upload on "Record a grade" for handwritten work, viewable in a "Photos of graded work" expander.
-lets build travel journal into curriculum. to capute historical travels and data entry by student. small uploads -> new Travel Journal section under Travel Log: title/date/content entries with optional photo and independent state/park/city tags.
-can i use api to call sites like https://www.khanacademy.org/ for completiotn and quiz/test scores? -> researched: Khan Academy has no public API as of 2026 (their public API program was discontinued; only internal/unsupported endpoints remain, no documented third-party auth path). Not feasible to auto-pull scores — logins stay in the Accounts tab for now.
+(NOTE: implemented on the compass-v2 branch / deployed app)
+DISCUSSION (not code) — data retention & storage: Neon does NOT auto-delete data; a free project persists until you delete it. Caveats: (1) a fully-idle free project can be *suspended* (auto-resumes on next connect); (2) the free tier caps at 0.5 GB. Text data (hours, notes, grades) is tiny — many years for a couple students. Photos were the risk; now fixed (see below).
+DISCUSSION (not code) — storage worry for two people a year: TEXT records are tiny — you will not hit 0.5 GB in a year, even for several families. PHOTOS: NOW FIXED — proof-of-work photos are stored (base64, compressed) in Postgres so they survive redeploys. (Used to go to the container's ephemeral disk.) If photo volume ever grows, move them to free object storage (Cloudflare R2 / Backblaze B2) and keep only the URL in Neon.
+compass-v2: choose-your-adventure Passion Track (4 phases: Start/Build/Level Up/Showcase) -> new adventure_worlds/adventure_nodes tables + phase model; student phase board; parent Adventure Builder (no-code authoring); completion routes through finish_fun_project so hours attribute. 28 seeded assignments across 4 worlds.
+compass-v2: reorganize + style the student view -> Home feed (Home / Do / Explore / Me) as the default landing, with live cards (today's work, continue your adventure, this week's life skill, quick jump, debrief) + a daily streak. Comic-pop card styling.
+compass-v2: anti-cheat -> device/network setup guide (Screen Time / Family Link / NextDNS) + in-app copy/paste block on the student view, with a kid-facing explanation on Day 1.
+compass-v2: hosted parent-gate + DB connection leak fixes -> parent mode always requires the passcode on a hosted (Postgres) deploy (ip_address was unreliable behind Render's proxy); get_conn is cached (@st.cache_resource) so a fresh engine/pool isn't created on every rerun.
+compass-v2: per-view testing feedback box + full NaN/dead-code cleanup.
+compass-v2: photo storage in Postgres so proof-of-work photos survive redeploys.
+compass-v2: repo clean slate -> pruned archive/ + cloud-archive/, consolidated docs, rewrote README, made compass-v2 the main branch.
+compass-v2: incorporate all 9th grade curriculum, required vs desired, pool of 9th ideas -> WEEKLY_SCHEDULE + CURRICULUM_RESOURCES are grade-keyed; full 9th schedule shows when a student is set to 9th; 6 generic HS quests added to the pool.
+compass-v2: quests + foundations: student "what did you do?" proof-of-work note; fix NaN steps (parse_steps NaN-safe).
+compass-v2: journal submit / debrief clunkiness -> journal is a form with a Save button.
+compass-v2: district registration form link (Sumner K-12 packet) in DOI steps + Launch Checklist. NOTE: Sumner-specific.
+compass-v2: plan blender context -> 1-2-3 guide in the view (set mix -> Save mix -> Generate week).
+compass-v2: Day 1 checklist button consistency (⬜/✅ header + Mark done button).
+compass-v2: Jr Ranger booklets -> booklet_url fallback to a search that lands the park's booklet.
+can we do better on the daily/weekly views. cards like agile sprint board -> Today = two-lane sprint board; My Week = five-lane Mon-Fri board w/ progress bar. render_block_card + render_today_board + render_week_board.
+want to say more today - just optional journal. drop the "this week" grid on the student check-in -> done.
+rethink the health check in for a 13 year old boy -> rebuilt as the "⚡ Daily Debrief". Two taps; "what was hard?" chips + "which was worst?"; streak counts CHECKING IN.
+healthy daily tasks (stretching / walk breaks) -> "Today's move": a rotating physical micro-challenge with a "Did it 💥" tick.
+parent account/password holder (readworks) + class code -> "Class code" field on every account, shown in My Logins. (Plaintext passwords — treat My Logins as visible to the student.)
+make the daily tab a checklist w/ progress bar -> done, with a 100% celebration.
+health check in - lesson score + what was hard/unclear -> 1-5 lesson score + one open reflection field.
+what is "this week" showing -> student My Week is a static timetable; parent "this week vs plan" now derives targets from WEEKLY_SCHEDULE (deleted the drifting PLANNED_HOURS).
+smithsonian learning lab -> seeded 6 collections into Resources (URL-verified, seed flag).
+upload photo from place (nps/state/city tag) -> Travel Log entries support a photo + independent state/park/city tags.
+submit dead/broken links as student -> "Report a broken link" form + parent review section.
+state/park/city dynamic auto-populate -> State Visit picker excludes states already covered by a park/city visit; cities untouched.
+pdf homework sheets / upload photo to grade -> Grading "Free printable worksheets" list + photo upload on Record a grade.
+travel journal into curriculum -> Travel Journal section under Travel Log.
+khanacademy API for scores -> researched: no public API as of 2026, not feasible.
