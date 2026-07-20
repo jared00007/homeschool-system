@@ -337,7 +337,7 @@ CURRICULUM_RESOURCES_9TH = {
     "Electives": ("World language / coding / arts",
                   "https://www.duolingo.com/",
                   "In 9th grade electives earn transcript credit — a world "
-                  "language especially. Follow the picks in 🎯 Electives & Books.",
+                  "language especially.",
                   ["Open whichever elective you've picked.",
                    "Do one full lesson or session — 15-20 focused minutes.",
                    "Click \"✅ Done, got it\" — or \"😕 Done, still fuzzy\"."]),
@@ -1672,7 +1672,7 @@ QUEST_TITLES = {
     "Writing": "✍️ Word Smith", "Science": "🔬 Lab Mission",
     "Social Studies": "🏛️ Civics Quest", "History": "📜 History Quest",
     "Health": "🛡️ Wellness Quest", "Occupational Education": "💼 Life Skills Quest",
-    "Art & Music Appreciation": "🎨 Creative Studio", "Electives": "🎮 Bonus Round",
+    "Art & Music Appreciation": "🎨 Creative Studio", "Electives": "🗺️ Adventure Time",
 }
 
 # A fixed pop-art color per subject — same idea as QUEST_POP_COLORS on the
@@ -4391,17 +4391,14 @@ def _render_reading_picker(student_id, school_year, key_prefix):
 
 
 def render_electives_books(student_id, school_year, key_prefix, is_parent=False):
-    """Flat electives + reading list panel — used in the Parent Curriculum tab."""
-    st.subheader(f"Electives — {school_year}")
-    _render_electives_picker(student_id, school_year, key_prefix, is_parent)
-
-    st.divider()
+    """Reading list panel for the Parent Curriculum tab. (Electives were retired
+    in favor of Adventures as the single interest-led engine.)"""
     st.subheader(f"Reading list — {school_year}")
     _render_reading_picker(student_id, school_year, key_prefix)
 
 
 def render_student_curriculum_setup(student_id, school_year):
-    """Student-only: collapsible Day 1/2 setup — propose, pick electives, pick books."""
+    """Student-only: collapsible Day 1/2 setup — propose, build a reading list."""
     school_start, _ = get_school_year_dates(school_year)
     day2_unlock = (school_start + timedelta(days=1)) if school_start else None
     day2_locked = day2_unlock is not None and date.today() < day2_unlock
@@ -4411,25 +4408,11 @@ def render_student_curriculum_setup(student_id, school_year):
                      "something new", expanded=not propose_done):
         render_proposals_student(student_id, school_year)
 
-    elect_done = not get_student_electives(student_id, school_year).empty
-    if day2_locked:
-        with st.container(border=True):
-            st.markdown("🔒 **Day 2: Select your electives**")
-            st.caption(f"Unlocks {fmt_date(day2_unlock)} — "
-                       "propose anything you want on Day 1 first, and your "
-                       "parent will review it overnight so it's ready to pick "
-                       "from.")
-    else:
-        with st.expander(f"{'✅ ' if elect_done else ''}🎯 Day 2: Select your "
-                         "electives", expanded=not elect_done):
-            _render_electives_picker(student_id, school_year, key_prefix="stu")
-
     books_done = not get_student_books(student_id, school_year).empty
     if day2_locked:
         with st.container(border=True):
             st.markdown("🔒 **Day 2: Build your reading list**")
-            st.caption(f"Unlocks {fmt_date(day2_unlock)}, same as "
-                       "electives.")
+            st.caption(f"Unlocks {fmt_date(day2_unlock)}.")
     else:
         with st.expander(f"{'✅ ' if books_done else ''}📚 Day 2: Build your "
                          "reading list", expanded=not books_done):
@@ -6147,18 +6130,6 @@ def render_launch_checklist(student_id, school_year):
                 else:
                     st.warning("Give it a label.")
 
-    # --- Electives selected
-    electives = get_student_electives(student_id, school_year)
-    elect_done = not electives.empty
-    total_items += 1
-    done_items += int(elect_done)
-    with st.container(border=True):
-        st.markdown(f"{'✅' if elect_done else '⬜'} **Student elective "
-                    "selections submitted**")
-        st.caption(("Picked: " + ", ".join(electives["elective_name"])) if elect_done
-                  else "Nothing picked yet — set from the Curriculum tab, or have "
-                       "him pick in his Electives & Books tab.")
-
     # --- Reading list started
     books = get_student_books(student_id, school_year)
     books_done = not books.empty
@@ -6749,36 +6720,18 @@ def render_day1_checklist(student_id, school_year):
     total_items += 1
     done_items += int(propose_done)
     with st.container(border=True):
-        st.markdown(f"{'✅' if propose_done else '⬜'} **Propose electives "
-                    "& books you want**")
+        st.markdown(f"{'✅' if propose_done else '⬜'} **Propose a book or "
+                    "idea you want**")
         if not proposals.empty:
             st.caption(f"You've submitted {len(proposals)} proposal(s). Check "
-                      "\"I'm done proposing\" in the 🎯 Electives & Books tab "
-                      "once you're finished.")
+                      "\"I'm done proposing\" in the 📚 Books tab once you're "
+                      "finished.")
         else:
             st.caption(
-                "Suggest an elective or book in the 🎯 Electives & Books tab — a "
-                "parent reviews it overnight so it's ready to officially pick "
-                "from on Day 2.")
+                "Suggest a book or idea in the 📚 Books tab — a parent reviews "
+                "it overnight so it's ready on Day 2.")
 
     st.markdown("## Day 2")
-
-    # --- Electives
-    electives = get_student_electives(student_id, school_year)
-    elect_done = not electives.empty
-    total_items += 1
-    done_items += int(elect_done)
-    with st.container(border=True):
-        if day2_locked:
-            st.markdown("🔒 **Select your electives for the year**")
-            st.caption(f"Unlocks {fmt_date(day2_unlock)} — finish "
-                       "Day 1 first.")
-        else:
-            st.markdown(f"{'✅' if elect_done else '⬜'} **Electives picked "
-                        "for the year**")
-            st.caption(("Picked: " + ", ".join(electives["elective_name"]))
-                      if elect_done else
-                      "Pick yours in the 🎯 Electives & Books tab.")
 
     # --- Reading list
     books = get_student_books(student_id, school_year)
@@ -6788,13 +6741,12 @@ def render_day1_checklist(student_id, school_year):
     with st.container(border=True):
         if day2_locked:
             st.markdown("🔒 **Build your reading list**")
-            st.caption(f"Unlocks {fmt_date(day2_unlock)}, same as "
-                       "electives.")
+            st.caption(f"Unlocks {fmt_date(day2_unlock)}.")
         else:
             st.markdown(f"{'✅' if books_done else '⬜'} **At least one book "
                         "on your reading list**")
             st.caption(f"{len(books)} book(s) on your list." if books_done
-                      else "Add one in the 🎯 Electives & Books tab.")
+                      else "Add one in the 📚 Books tab.")
 
     # --- Manual orientation items. Rendered like every other checklist row:
     # a ⬜/✅ header + a "Mark done" button (green ✅ once done), instead of a
@@ -6986,7 +6938,7 @@ with st.sidebar:
             "nav_do", "student_view")
         _nav_group("🧭 Explore", [
             ("Adventures", "🎢"), ("Passion Track", "🗺️"), ("Foundations", "🧭"),
-            ("Electives & Books", "🎯"), ("Travel Log", "🧳"), ("Resources", "📎")],
+            ("Books", "📚"), ("Travel Log", "🧳"), ("Resources", "📎")],
             "nav_explore", "student_view")
         _nav_group("🙂 Me", [
             ("My Grades", "🏆"), ("Quizzes", "📝"), ("My Logins", "🔑"),
@@ -7177,18 +7129,9 @@ if not parent_mode:
                         f'display:inline-block">{QUEST_TITLES.get(subject, subject)}</span> {badge}',
                         unsafe_allow_html=True)
                     if subject == "Electives":
-                        if chosen_electives.empty:
-                            st.info("No electives picked yet — choose some in the "
-                                    "🎯 Electives & Books tab.")
-                            done_label = "elective work"
-                        else:
-                            for _, e in chosen_electives.iterrows():
-                                info = elective_pool.get(e["elective_name"])
-                                if info:
-                                    st.markdown(f"🔗 **{e['elective_name']}** — "
-                                                f"[{info[0]}]({info[1]})")
-                                    st.caption(info[2])
-                            done_label = ", ".join(chosen_electives["elective_name"])
+                        st.markdown("🗺️ **Adventure time** — open the 🎢 Adventures "
+                                    "tab and work your current quest.")
+                        done_label = "adventure time"
                     else:
                         _res = resources_for_grade(student_row["grade"])
                         res = _res.get(resource_key,
@@ -7282,16 +7225,8 @@ if not parent_mode:
                 subject, start, end = it["subject"], it["start"], it["end"]
                 render_block_card(subject, start, end, it["status"], it["struggled"])
                 if subject == "Electives":
-                    if ctx["electives"].empty:
-                        st.caption("No electives picked yet — grab some in "
-                                   "🎯 Electives & Books.")
-                        done_label = "elective work"
-                    else:
-                        for _, e in ctx["electives"].iterrows():
-                            info = ctx["elective_pool"].get(e["elective_name"])
-                            if info:
-                                st.markdown(f"🔗 [{e['elective_name']}]({info[1]})")
-                        done_label = ", ".join(ctx["electives"]["elective_name"])
+                    st.caption("🗺️ Adventure time — see the 🎢 Adventures tab.")
+                    done_label = "adventure time"
                 else:
                     _res = resources_for_grade(student_row["grade"])
                     res = _res.get(it["resource_key"],
@@ -7687,7 +7622,7 @@ if not parent_mode:
         school_year = student_row["school_year"] or "current"
         render_travel_log(student_id, school_year, key_prefix="stu")
 
-    elif st.session_state.student_view == "Electives & Books":
+    elif st.session_state.student_view == "Books":
         school_year = student_row["school_year"] or "current"
         render_student_curriculum_setup(student_id, school_year)
 
@@ -8040,9 +7975,6 @@ else:
         school_year = student_row["school_year"] or "current"
         render_electives_books(student_id, school_year, key_prefix="parent",
                                is_parent=True)
-
-        st.divider()
-        render_elective_pool_admin(school_year)
 
         st.divider()
         render_book_pool_admin()
