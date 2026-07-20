@@ -6,6 +6,23 @@ parent assigned main project? something fun?
 can we include some social situational awareness for sutdent who struggles with some basics
 lets talk about the passion track. i want to branch a new idea and see how it looks. im thinking like a chose your own adventure style. (-> BUILT on compass-v2: worlds -> 4-phase adventures Start/Build/Level Up/Showcase, student board + parent builder)
 
+---go-to-market / turn compass into a paid product (ON ICE — parked, revisit later)---
+THESIS: real opportunity in homeschool software that's "simple but dynamic" — lets a parent be hands-on shaping their kid's curriculum without it being a rigid box OR a blank spreadsheet. Compass already embodies this (Adventure Builder + blend ratio + two-track). Head start: I have a working prototype of the exact thesis.
+TARGET: the "eclectic middle" homeschool parent (mix-and-match, hands-on but time-starved) — biggest + fastest-growing segment. NOT the box-buyers, NOT the unschoolers.
+THE TRAP: parents SAY they want to build curriculum, but a blank canvas paralyzes them (why boxes sell). Win = "here's a real week for your kid, now bend it" — dynamic but SCAFFOLDED, never blank.
+THE WEDGE (what makes a stressed parent pay): "raise a capable human + the state paperwork takes care of itself" = the life-skills guarantee (money/cooking/civics as a mandatory half) + records that fill themselves in. Kid-authored adventures = the engagement engine that makes it stick. ("Customizable / interest-led" alone is what EVERY ed product claims — not a wedge.)
+
+MENTAL MODEL: you don't BUILD the hard parts of a SaaS, you RENT + wire them.
+THE STACK (rented parts): domain (Namecheap ~$12/yr) · landing page (Carrd/Framer) · accounts+login (Clerk/Supabase Auth) · payments (STRIPE — never build billing) · app hosting (Render/Vercel) · email (Resend). Support = an inbox at first.
+HOW THEY PURCHASE (simplest->real): L0 = Stripe Payment Link (a URL, no code, take money this week, hand-onboard) · L1 = Stripe Checkout + webhook auto-creates account · L2 = Stripe Customer Portal (self-serve cancel/upgrade).
+WHAT'S MISSING to ship to others: accounts + MULTI-TENANCY (many families, one app, data scoped per account, self-serve signup). Current per-family-instance model is fine for first 5-10 paying families; rebuild multi-tenant only once demand is proven. Likely re-platform off Streamlit at that point.
+MARKETING (where homeschoolers are): Facebook groups (#1, no spam — participate) · IG/TikTok homeschool-mom creators · r/homeschool · co-ops + conventions + state assoc sites · SEO content ("how to track homeschool hours in <state>" — compliance angle is a goldmine) · word of mouth (tight communities).
+WHERE TO TEST (cheap->real): (1) waitlist landing page (Carrd, ~1hr) shared in FB groups — strangers giving email = first real signal · (2) "fake door" $9/mo button -> "coming soon" = purchase intent w/o billing · (3) 10x 20-min parent interviews · (4) free beta 5-10 families -> flip to paid.
+SEQUENCE: landing+waitlist -> validate -> Stripe Payment Link + hand-onboard first payers -> IF sticks: rent auth + rebuild multi-tenant + self-serve -> scale marketing. Go left->right, don't build next until current proves out.
+HONEST CAVEATS: children's data = real legal/security exposure at scale (COPPA/FERPA; MUST fix plaintext password storage in My Logins before paying strangers) · Streamlit is right for the MVP, wrong for a polished multi-tenant consumer product · validate willingness-to-pay BEFORE building the machinery.
+NEXT CONCRETE STEP when unfrozen: stand up a real waitlist landing page for Compass (learn domain/landing/email-capture hands-on, get a live URL to drop in a homeschool group). Claude offered to walk through this + to help script the 10 validation interviews + nail the positioning one-liner.
+POSITIONING DRAFT: "For the homeschool parent who wants to raise a capable kid without drowning in planning and paperwork, Compass builds a real, interest-driven week around your child AND keeps your compliance records automatically — unlike the rigid boxes or the blank spreadsheets."
+
 ---upgrades---
 for national parks, do you think it makes sense forthem to only be able to enter once and move on? or allow multiple just for the sake of it?i was thinking more of 1 and done to track travel and % of totals. same really for state and ciry. thoughts?
 
