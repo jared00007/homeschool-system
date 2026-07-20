@@ -7033,18 +7033,24 @@ def _quiz_focus_guard():
           var doc = window.parent && window.parent.document;
           if(!doc || doc.__quizFocusInit) return;
           doc.__quizFocusInit = true;
+          var setNative = function(inp, val){
+            var d = Object.getOwnPropertyDescriptor(
+              window.parent.HTMLInputElement.prototype, 'value');
+            d.set.call(inp, val);
+            inp.dispatchEvent(new Event('input', {bubbles:true}));
+          };
           doc.addEventListener('visibilitychange', function(){
-            var onQuiz = !!(doc.body && doc.body.innerText.indexOf('Focus mode') >= 0);
-            if(doc.hidden){
-              if(onQuiz){
-                doc.__qLeaves = (doc.__qLeaves || 0) + 1;
-                if(!doc.__qTitle){ doc.__qTitle = doc.title; }
-                doc.title = '\u26A0\uFE0F Back to your quiz! (left ' + doc.__qLeaves + 'x)';
-              }
-            } else if(doc.__qTitle){
-              doc.title = doc.__qTitle;
-              doc.__qTitle = null;
+            if(!doc.hidden){
+              if(doc.__qTitle){ doc.title = doc.__qTitle; doc.__qTitle = null; }
+              return;
             }
+            var onQuiz = !!(doc.body && doc.body.innerText.indexOf('Focus mode') >= 0);
+            if(!onQuiz) return;
+            var inp = doc.querySelector('.st-key-quizleaves input');
+            var n = 1;
+            if(inp){ n = (parseInt(inp.value, 10) || 0) + 1; setNative(inp, String(n)); }
+            if(!doc.__qTitle){ doc.__qTitle = doc.title; }
+            doc.title = '\u26A0\uFE0F Back to your quiz! (left ' + n + 'x)';
           }, true);
         })();
         </script>
@@ -7644,13 +7650,19 @@ if not parent_mode:
         if result is None:
             if quiz_key not in st.session_state.quiz_start_times:
                 st.session_state.quiz_start_times[quiz_key] = time.time()
+                st.session_state["quizleaves"] = "0"
+            st.session_state.setdefault("quizleaves", "0")
 
             st.info("⏱️ We track how long quizzes take — take your time to "
                     "read each question and think it through.")
             st.caption("🔒 Focus mode: this quiz watches for tab-switching — "
                        "stay on this page until you submit.")
             _quiz_focus_guard()
+            st.markdown("<style>.st-key-quizleaves{display:none}</style>",
+                        unsafe_allow_html=True)
             with st.form(key=f"quiz_form_{quiz_key}"):
+                leaves_raw = st.text_input("tab switches", key="quizleaves",
+                                           label_visibility="collapsed")
                 responses = []
                 for i, q in enumerate(questions):
                     ans = st.radio(f"**{i + 1}. {q['q']}**", q["choices"],
@@ -7672,12 +7684,17 @@ if not parent_mode:
                     notes += f" Completed in {format_elapsed(elapsed)}."
                     if rushed:
                         notes += f" ⚡ Flagged — faster than the {floor}s floor."
+                    switches = (int(leaves_raw)
+                                if str(leaves_raw).strip().isdigit() else 0)
+                    if switches:
+                        notes += (f" 👀 Left the quiz tab {switches}× while "
+                                  "taking it.")
                     add_assignment(student_id, date.today(), qsubj,
                                    f"Quiz: {qtopic}", correct, total, notes)
                     st.session_state.quiz_results[quiz_key] = {
                         "correct": correct, "total": total,
                         "questions": questions, "responses": responses,
-                        "elapsed": elapsed, "rushed": rushed}
+                        "elapsed": elapsed, "rushed": rushed, "switches": switches}
                     del st.session_state.quiz_start_times[quiz_key]
                     st.rerun()
         else:
@@ -7690,6 +7707,9 @@ if not parent_mode:
                            f"{result['total']} questions — flagged for your "
                            "parent to see in Grading. Slow down and actually "
                            "read next time!")
+            if result.get("switches"):
+                st.warning(f"👀 You left the quiz tab {result['switches']} time(s) "
+                           "while taking it — your parent can see that in Grading.")
             for i, (q, a) in enumerate(zip(result["questions"], result["responses"])):
                 right = a == q["answer"]
                 st.markdown(f"{'✅' if right else '❌'} **{i + 1}. {q['q']}**")
