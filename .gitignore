@@ -13,3 +13,4 @@ tracker/venv/
 app-links.txt
 tracker/homeschool.db.bak-*
 tracker/homeschool.db.pre-rollback-*
+backups/
