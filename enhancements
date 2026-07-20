@@ -1,7 +1,6 @@
 ------enhancements & feedback------
 
 ---ideas/brainstorming---
-is it possible to do quiz in a new window that cannot be moved od switched from untilk submit?
 parent assigned main project? something fun?
 can we include some social situational awareness for sutdent who struggles with some basics
 lets talk about the passion track. i want to branch a new idea and see how it looks. im thinking like a chose your own adventure style. (-> BUILT on compass-v2: worlds -> 4-phase adventures Start/Build/Level Up/Showcase, student board + parent builder)
@@ -24,7 +23,6 @@ NEXT CONCRETE STEP when unfrozen: stand up a real waitlist landing page for Comp
 POSITIONING DRAFT: "For the homeschool parent who wants to raise a capable kid without drowning in planning and paperwork, Compass builds a real, interest-driven week around your child AND keeps your compliance records automatically — unlike the rigid boxes or the blank spreadsheets."
 
 ---upgrades---
-for national parks, do you think it makes sense forthem to only be able to enter once and move on? or allow multiple just for the sake of it?i was thinking more of 1 and done to track travel and % of totals. same really for state and ciry. thoughts?
 
 ---adds---
 pull in the retail/membership discount card list (from the separate "Project assistance needed" chat) into resources/benefits-and-discounts.md once its contents are shared — see "Still needed" section there
@@ -34,6 +32,11 @@ consider whether the DOI reminder in the Parent Console should also store the ch
 
 ---work done---
 (NOTE: implemented on the compass-v2 branch / deployed app)
+main: books closed loop -> finishing a book now needs a short reflection + logs pending Reading hours (idempotent, new hours_logged flag). No more dead-end dropdown; every learning feature now has a real start->end.
+main: retire electives -> Adventures is the single interest-led engine. 'Electives & Books' tab -> '📚 Books' (reading only); removed the student+parent electives pickers, the elective-pool admin, and the electives checklist items; the schedule 'Electives' block now points at the Adventures tab (kept the subject key so hours attribution is unaffected).
+main: national parks/cities one-and-done (was ---upgrades---) -> park & city pickers exclude already-logged places (states already did); each shows 'X/total logged · N%' coverage.
+main: quiz focus-lock (was the 'quiz in a locked window' idea) -> honest version: a browser can't cage a window, so 'Focus mode' caption + a visibility listener that swaps the browser-tab title to '⚠️ Back to your quiz! (left Nx)' ONLY while on a quiz, layered on the copy/paste block + too-fast timing flag.
+main: repo clean slate + made main the real branch (retired compass-v2) + one-command Neon backup (scripts/backup.sh).
 DISCUSSION (not code) — data retention & storage: Neon does NOT auto-delete data; a free project persists until you delete it. Caveats: (1) a fully-idle free project can be *suspended* (auto-resumes on next connect); (2) the free tier caps at 0.5 GB. Text data (hours, notes, grades) is tiny — many years for a couple students. Photos were the risk; now fixed (see below).
 DISCUSSION (not code) — storage worry for two people a year: TEXT records are tiny — you will not hit 0.5 GB in a year, even for several families. PHOTOS: NOW FIXED — proof-of-work photos are stored (base64, compressed) in Postgres so they survive redeploys. (Used to go to the container's ephemeral disk.) If photo volume ever grows, move them to free object storage (Cloudflare R2 / Backblaze B2) and keep only the URL in Neon.
 compass-v2: choose-your-adventure Passion Track (4 phases: Start/Build/Level Up/Showcase) -> new adventure_worlds/adventure_nodes tables + phase model; student phase board; parent Adventure Builder (no-code authoring); completion routes through finish_fun_project so hours attribute. 28 seeded assignments across 4 worlds.
